@@ -1393,6 +1393,10 @@ impl App {
             | View::ChooseMode { list, .. }
             | View::Choices { list, .. }
             | View::Packs { list, .. }
+            | View::PackSets { list }
+            | View::PeerPacks { list, .. }
+            | View::PeerFiles { list, .. }
+            | View::ShareSetup { list, .. }
             | View::Keys { list, .. }
             | View::Settings { list } => Some(list),
             _ => None,
@@ -1424,6 +1428,10 @@ impl App {
             | View::ChooseMode { list, .. }
             | View::Choices { list, .. }
             | View::Packs { list, .. }
+            | View::PackSets { list }
+            | View::PeerPacks { list, .. }
+            | View::PeerFiles { list, .. }
+            | View::ShareSetup { list, .. }
             | View::Keys { list, .. }
             | View::Settings { list } => list.selected(),
             _ => None,

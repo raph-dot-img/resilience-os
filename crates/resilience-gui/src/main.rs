@@ -259,6 +259,10 @@ impl Gui {
                         | View::Choices { .. }
                         | View::Packs { .. }
                         | View::Keys { .. }
+                        | View::PackSets { .. }
+                        | View::PeerPacks { .. }
+                        | View::PeerFiles { .. }
+                        | View::ShareSetup { .. }
                 ))
     }
 
@@ -307,6 +311,15 @@ impl Gui {
                         l.select(Some(i));
                     }
                     Effect::None
+                } else if self.app.modal.is_none()
+                    && matches!(self.app.view(), View::PeerPacks { .. })
+                {
+                    // A click ticks; Enter or d gets the ticked packs.
+                    if let Some(l) = self.app.list_mut() {
+                        l.select(Some(i));
+                    }
+                    self.app
+                        .handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
                 } else if self.app.modal.is_none() && matches!(self.app.view(), View::Packs { .. })
                 {
                     // A click ticks the pack (Enter still shows its details).
@@ -416,6 +429,12 @@ impl Gui {
                 View::Choices { items, .. } => self.choices_view(items, &p),
                 View::Packs { s, .. } => self.packs_view(s, &p),
                 View::Keys { rows, .. } => self.keys_view(rows, &p),
+                View::PackSets { .. } => self.pack_sets_view(&p),
+                View::PeerPacks {
+                    peer, rows, ticked, ..
+                } => self.peer_packs_view(peer, rows, ticked, &p),
+                View::PeerFiles { peer, rows, .. } => self.peer_files_view(peer, rows, &p),
+                View::ShareSetup { form, .. } => self.share_setup_view(form, &p),
                 View::Wifi {
                     overview, error, ..
                 } => self.wifi_view(overview.as_ref(), error.as_deref(), &p),
@@ -504,6 +523,10 @@ impl Gui {
             View::Choices { title, .. } => sentence_case(title),
             View::Packs { .. } => "Resource packs".into(),
             View::Keys { .. } => "Keys & contacts".into(),
+            View::PackSets { .. } => "Suggested sets".into(),
+            View::PeerPacks { .. } => "Packs from a nearby computer".into(),
+            View::PeerFiles { .. } => "Shared folder of a nearby computer".into(),
+            View::ShareSetup { .. } => "Share this computer's resources".into(),
             View::Updates { .. } => "Update from a USB stick".into(),
             View::Backups { volume, .. } => format!("Backups on {}", volume.display_name()),
             View::Media { purpose, .. } => match purpose {
@@ -1870,6 +1893,198 @@ impl Gui {
             "Your keys come first, then your contacts. Check a contact's key with them in \
              person or by phone."
                 .into(),
+            p,
+        )
+    }
+
+    fn pack_sets_view<'a>(&self, p: &Palette) -> Element<'a, Message> {
+        use resilience_core::{human_bytes, packs::PackState};
+        let Some(s) = self.app.stack.iter().rev().find_map(|v| match v {
+            View::Packs { s, .. } => Some(&**s),
+            _ => None,
+        }) else {
+            return centered_note("");
+        };
+        let rows = s
+            .cfg
+            .sets
+            .iter()
+            .map(|set| {
+                let (mut missing, mut add) = (0, 0u64);
+                let mut titles = Vec::new();
+                for id in &set.packs {
+                    if let Some(i) = s.cfg.packs.iter().position(|p| &p.id == id) {
+                        titles.push(s.cfg.packs[i].title.clone());
+                        match s.inv.states[i] {
+                            PackState::Installed => {}
+                            PackState::Partial(n) => {
+                                add += s.cfg.packs[i].size - n;
+                                missing += 1;
+                            }
+                            PackState::Absent => {
+                                add += s.cfg.packs[i].size;
+                                missing += 1;
+                            }
+                        }
+                    }
+                }
+                RowSpec {
+                    glyph: "\u{2726}",
+                    title: set.title.clone(),
+                    sub: format!("{}  \u{00b7}  {}", set.description, titles.join(", ")),
+                    right: if missing == 0 {
+                        "all installed".into()
+                    } else {
+                        format!("{missing} to get, {}", human_bytes(add))
+                    },
+                    mark: missing == 0,
+                    ..RowSpec::default()
+                }
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter or click: tick every pack of this set",
+            "",
+            "Nothing is downloaded yet: back on the packs, d downloads, u copies from a USB stick."
+                .into(),
+            p,
+        )
+    }
+
+    fn peer_packs_view<'a>(
+        &self,
+        peer: &resilience_core::share::Peer,
+        rows: &[resilience_shell::app::PeerPack],
+        ticked: &[bool],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        use resilience_core::human_bytes;
+        let total: u64 = rows
+            .iter()
+            .zip(ticked)
+            .filter(|(_, on)| **on)
+            .map(|(r, _)| r.size)
+            .sum();
+        let specs = rows
+            .iter()
+            .zip(ticked)
+            .map(|(r, on)| {
+                let mark = if r.installed {
+                    "[*]"
+                } else if *on {
+                    "[+]"
+                } else {
+                    "[ ]"
+                };
+                RowSpec {
+                    glyph: tick_glyph(mark),
+                    title: r.title.clone(),
+                    sub: human_bytes(r.size),
+                    right: match mark {
+                        "[*]" => "installed".into(),
+                        "[+]" => "get".into(),
+                        _ => String::new(),
+                    },
+                    mark: mark != "[ ]",
+                    ..RowSpec::default()
+                }
+            })
+            .collect();
+        self.rows_view(
+            specs,
+            "Click or Space: tick  \u{00b7}  Enter or d: get the ticked packs",
+            "This computer offers no pack that is in this system's catalog.",
+            format!(
+                "From {}  \u{00b7}  ticked: {}  \u{00b7}  each pack is checked against this \
+                 system's catalog before it is installed.",
+                peer.display(),
+                human_bytes(total)
+            ),
+            p,
+        )
+    }
+
+    fn peer_files_view<'a>(
+        &self,
+        peer: &resilience_core::share::Peer,
+        rows: &[resilience_core::share::SharedFile],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let specs = rows
+            .iter()
+            .map(|r| RowSpec {
+                glyph: "\u{25a4}",
+                title: messages::clean_line(&r.name, 80),
+                right: resilience_core::human_bytes(r.size),
+                ..RowSpec::default()
+            })
+            .collect();
+        self.rows_view(
+            specs,
+            "Enter or click: copy into Received",
+            "This computer's shared folder is empty.",
+            format!(
+                "From {}  \u{00b7}  files are not checked; read the copy with Find files.",
+                peer.display()
+            ),
+            p,
+        )
+    }
+
+    fn share_setup_view<'a>(
+        &self,
+        form: &resilience_shell::app::ShareForm,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let iface = form
+            .interfaces
+            .get(form.iface)
+            .map(String::as_str)
+            .unwrap_or("-");
+        let mut rows = vec![
+            RowSpec {
+                glyph: "\u{21c4}",
+                title: format!("Network: {iface}"),
+                sub: "Enter or click: next network. Only one network at a time.".into(),
+                ..RowSpec::default()
+            },
+            RowSpec {
+                glyph: "\u{270e}",
+                title: format!("Name others see: {}", form.name),
+                sub: "Enter or click: change it".into(),
+                ..RowSpec::default()
+            },
+        ];
+        for (sv, on) in resilience_core::share::Service::ALL
+            .iter()
+            .zip(form.services)
+        {
+            rows.push(RowSpec {
+                glyph: if on { "\u{2611}" } else { "\u{2610}" },
+                title: resilience_shell::app::service_label(*sv).to_string(),
+                right: if on { "shared".into() } else { String::new() },
+                mark: on,
+                ..RowSpec::default()
+            });
+        }
+        rows.push(RowSpec {
+            glyph: "\u{2192}",
+            title: "Share now\u{2026}".into(),
+            sub: "Everything you share can be read by ANYONE on this network.".into(),
+            warn: true,
+            ..RowSpec::default()
+        });
+        let (f_ok, f_no) = self.app.shared_counts("files");
+        let (p_ok, p_no) = self.app.shared_counts("pages");
+        self.rows_view(
+            rows,
+            "Enter, Space or click: change  \u{00b7}  Esc: cancel",
+            "",
+            format!(
+                "Shared folder: {f_ok} file(s) served, {f_no} not served  \u{00b7}  pages: \
+                 {p_ok} served, {p_no} not served  \u{00b7}  nothing can be sent to this computer."
+            ),
             p,
         )
     }
