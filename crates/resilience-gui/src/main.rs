@@ -102,6 +102,8 @@ enum Message {
     RunDone(String, Result<i32, String>),
     /// A dialog button: the key it stands for.
     Press(KeyEvent),
+    /// Tick or untick a recipient in the "Encrypt for" dialog.
+    Recipient(usize),
 }
 
 struct Gui {
@@ -321,6 +323,16 @@ impl Gui {
                 } else {
                     self.app.choose_row(i)
                 }
+            }
+            Message::Recipient(i) => {
+                if self.running.is_some() {
+                    return Task::none();
+                }
+                if let Some(Modal::Recipients { sel, .. }) = self.app.modal.as_mut() {
+                    *sel = i;
+                }
+                self.app
+                    .handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
             }
             Message::Press(k) => {
                 if self.running.is_some() {
@@ -1902,6 +1914,9 @@ impl Gui {
                     | Modal::ShareInput { .. }
                     | Modal::ChatInput { .. }
                     | Modal::ExpectedSum { .. }
+                    | Modal::Recipients { .. }
+                    | Modal::SetTime { .. }
+                    | Modal::InstallText { .. }
             )
         )
     }
@@ -1928,6 +1943,7 @@ impl Gui {
         let mut err: Option<String> = None;
         let mut buttons: Vec<Element<'a, Message>> = Vec::new();
         let mut is_error = false;
+        let mut extra: Option<Element<'a, Message>> = None;
         let ok_cancel = |ok: &str, buttons: &mut Vec<Element<'a, Message>>| {
             buttons.push(btn("Cancel".into(), key(KeyCode::Esc), false, false, false).into());
             buttons.push(btn(ok.into(), key(KeyCode::Enter), true, false, true).into());
@@ -2091,13 +2107,140 @@ impl Gui {
                     ),
                 )
             }
-            _ => return None,
+            Modal::SetTime { value, zone, error } => {
+                field = Some(value.clone());
+                err = error.clone();
+                hint = "Year-month-day hour:minute, for example 2026-11-21 18:30.".into();
+                ok_cancel("Continue", &mut buttons);
+                (
+                    "Date & time".into(),
+                    format!(
+                        "The clock shows {} (time zone {zone}). Correct date and time:",
+                        resilience_shell::fmt::date_time(std::time::SystemTime::now())
+                    ),
+                )
+            }
+            Modal::InstallText {
+                field: f,
+                value,
+                error,
+            } => {
+                use resilience_shell::app::InstallInput;
+                field = Some(value.clone());
+                err = error.clone();
+                match f {
+                    InstallInput::Name(_) => {
+                        hint = "Lowercase letters, digits, - and _.".into();
+                        ok_cancel("OK", &mut buttons);
+                        ("Account name".into(), "Login name:".into())
+                    }
+                    InstallInput::FullName(_) => {
+                        hint = "It may stay empty.".into();
+                        ok_cancel("OK", &mut buttons);
+                        ("Full name".into(), "Full name or description:".into())
+                    }
+                    InstallInput::Confirm => {
+                        is_error = true;
+                        hint = "Everything on this disk will be erased.".into();
+                        buttons.push(
+                            btn("Go back".into(), key(KeyCode::Esc), false, false, true).into(),
+                        );
+                        buttons.push(
+                            btn(
+                                "Erase and install".into(),
+                                key(KeyCode::Enter),
+                                true,
+                                true,
+                                false,
+                            )
+                            .into(),
+                        );
+                        let disk = self
+                            .app
+                            .install_form()
+                            .and_then(|fm| fm.disk.as_ref())
+                            .map(|d| d.name().to_string())
+                            .unwrap_or_default();
+                        (
+                            "Erase this disk and install?".into(),
+                            format!(
+                                "{}\n\nTo go on, type the disk's name ({disk}):",
+                                self.app.install_summary()
+                            ),
+                        )
+                    }
+                }
+            }
+            Modal::Recipients {
+                target,
+                rows,
+                ticked,
+                sel,
+                error,
+            } => {
+                use resilience_shell::app::{EncryptTarget, Recipient};
+                err = error.clone();
+                hint = "Click or Space: tick  \u{00b7}  several people: tick each".into();
+                ok_cancel("Encrypt", &mut buttons);
+                let items: Vec<Element<'a, Message>> = rows
+                    .iter()
+                    .zip(ticked)
+                    .enumerate()
+                    .map(|(i, (r, on))| {
+                        let name = match r {
+                            Recipient::Passphrase => {
+                                "A passphrase (you type it; give it to the reader)".to_string()
+                            }
+                            Recipient::Me => "Me (my encryption key)".to_string(),
+                            Recipient::Contact(n) => resilience_core::printable(n),
+                            Recipient::OpenPgp { name, .. } => {
+                                format!("OpenPGP: {}", resilience_core::printable(name))
+                            }
+                        };
+                        let focused = i == *sel;
+                        button(
+                            row![
+                                text(if *on { "\u{2611}" } else { "\u{2610}" })
+                                    .size(20)
+                                    .color(p.accent),
+                                text(name).size(15)
+                            ]
+                            .spacing(12)
+                            .align_y(iced::Center),
+                        )
+                        .on_press(Message::Recipient(i))
+                        .width(Fill)
+                        .padding([8, 14])
+                        .style(move |t, st| style::row_button(t, st, focused))
+                        .into()
+                    })
+                    .collect();
+                extra = Some(
+                    scrollable(column(items).spacing(4))
+                        .spacing(8)
+                        .height(Length::Shrink)
+                        .into(),
+                );
+                let what = match target {
+                    EncryptTarget::File(f) => format!(
+                        "Encrypt \u{201c}{}\u{201d} for:",
+                        f.file_name()
+                            .map(|n| n.to_string_lossy())
+                            .unwrap_or_default()
+                    ),
+                    EncryptTarget::Message => "Encrypt the message for:".to_string(),
+                };
+                ("Encrypt for".into(), what)
+            }
         };
         let mut c = column![
             text(title).size(22).font(style::UI_FONT_BOLD),
             text(body).size(15),
         ]
         .spacing(14);
+        if let Some(x) = extra {
+            c = c.push(x);
+        }
         if let Some(v) = field {
             c = c.push(
                 container(text(format!("{v}{cursor}")).size(17))
