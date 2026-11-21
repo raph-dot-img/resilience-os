@@ -28,7 +28,7 @@ use resilience_core::catalog::Category;
 use resilience_core::config::ThemeName;
 use resilience_core::messages;
 use resilience_shell::app::{
-    App, Effect, Entry, Modal, SearchHit, Startup, View, category_description,
+    App, Effect, Entry, Modal, PackRow, PacksScreen, SearchHit, Startup, View, category_description,
 };
 use resilience_shell::input::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -123,6 +123,12 @@ impl Gui {
     fn new() -> (Gui, Task<Message>) {
         let mut app = App::new(Startup::load());
         app.apply_saved_layout();
+        // Development previews only (scripts/gui-preview.sh): a sample catalog.
+        if cfg!(debug_assertions)
+            && let Some(p) = std::env::var_os("RESILIENCE_PACKS_CONFIG")
+        {
+            app.paths.packs_config = p.into();
+        }
         let gui = Gui {
             app,
             size: iced::Size::new(1280.0, 800.0),
@@ -249,6 +255,8 @@ impl Gui {
                         | View::PeerMenu { .. }
                         | View::ChooseMode { .. }
                         | View::Choices { .. }
+                        | View::Packs { .. }
+                        | View::Keys { .. }
                 ))
     }
 
@@ -297,6 +305,19 @@ impl Gui {
                         l.select(Some(i));
                     }
                     Effect::None
+                } else if self.app.modal.is_none() && matches!(self.app.view(), View::Packs { .. })
+                {
+                    // A click ticks the pack (Enter still shows its details).
+                    if let View::Packs { s, .. } = self.app.view()
+                        && !s.rows().get(i).is_some_and(|r| r.selectable())
+                    {
+                        return Task::none();
+                    }
+                    if let Some(l) = self.app.list_mut() {
+                        l.select(Some(i));
+                    }
+                    self.app
+                        .handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
                 } else {
                     self.app.choose_row(i)
                 }
@@ -381,6 +402,8 @@ impl Gui {
                 } => self.peer_menu_view(name, peer, actions, &p),
                 View::ChooseMode { row, .. } => self.choose_mode_view(row, &p),
                 View::Choices { items, .. } => self.choices_view(items, &p),
+                View::Packs { s, .. } => self.packs_view(s, &p),
+                View::Keys { rows, .. } => self.keys_view(rows, &p),
                 View::Wifi {
                     overview, error, ..
                 } => self.wifi_view(overview.as_ref(), error.as_deref(), &p),
@@ -467,6 +490,8 @@ impl Gui {
             View::PeerMenu { name, .. } => format!("\"{}\"?", resilience_core::printable(name)),
             View::ChooseMode { row, .. } => format!("New security mode for {}", row.name),
             View::Choices { title, .. } => sentence_case(title),
+            View::Packs { .. } => "Resource packs".into(),
+            View::Keys { .. } => "Keys & contacts".into(),
             View::Updates { .. } => "Update from a USB stick".into(),
             View::Backups { volume, .. } => format!("Backups on {}", volume.display_name()),
             View::Media { purpose, .. } => match purpose {
@@ -1212,6 +1237,16 @@ impl Gui {
                 .into_iter()
                 .enumerate()
                 .map(|(i, r)| {
+                    if r.header {
+                        return container(
+                            text(r.title)
+                                .size(13)
+                                .font(style::UI_FONT_BOLD)
+                                .color(p.accent),
+                        )
+                        .padding(iced::Padding::from([0, 18]).top(14).bottom(2))
+                        .into();
+                    }
                     let mut info = column![text(r.title).size(16).font(style::UI_FONT_BOLD)];
                     if !r.sub.is_empty() {
                         info = info.push(text(r.sub).size(13).color(if r.warn {
@@ -1326,6 +1361,7 @@ impl Gui {
                     right: r.effective.label().to_string(),
                     mark: you,
                     warn: pending,
+                    header: false,
                 }
             })
             .collect();
@@ -1373,6 +1409,7 @@ impl Gui {
                     right: resilience_core::human_bytes(v.size),
                     mark: v.mountpoint.is_some(),
                     warn: !v.usable(),
+                    header: false,
                 }
             })
             .collect();
@@ -1422,6 +1459,7 @@ impl Gui {
                     },
                     mark: g.default,
                     warn: false,
+                    header: false,
                 }
             })
             .collect();
@@ -1499,6 +1537,7 @@ impl Gui {
                     right: resilience_core::human_bytes(r.volume.size),
                     mark,
                     warn,
+                    header: false,
                 }
             })
             .collect();
@@ -1560,6 +1599,7 @@ impl Gui {
             right: "on".into(),
             mark: true,
             warn: false,
+            header: false,
         };
         let heard = rows
             .iter()
@@ -1691,6 +1731,7 @@ impl Gui {
                 },
                 mark: *m == row.effective,
                 warn: false,
+                header: false,
             })
             .collect();
         self.rows_view(
@@ -1698,6 +1739,125 @@ impl Gui {
             "Enter or click: continue   \u{00b7}   Esc: cancel",
             "",
             "Next you see what changes and confirm; nothing changes yet.".into(),
+            p,
+        )
+    }
+
+    fn packs_view<'a>(&self, s: &PacksScreen, p: &Palette) -> Element<'a, Message> {
+        use resilience_core::human_bytes;
+        let rows = s
+            .rows()
+            .into_iter()
+            .map(|r| match r {
+                PackRow::Header(c) => RowSpec {
+                    title: c.label().to_uppercase(),
+                    header: true,
+                    ..RowSpec::default()
+                },
+                PackRow::OthersHeader => RowSpec {
+                    title: "OTHER FILES (NOT IN THE CATALOG)".into(),
+                    header: true,
+                    ..RowSpec::default()
+                },
+                PackRow::Pack(i) => {
+                    let pk = &s.cfg.packs[i];
+                    let (mark, state) = s.row_state(r);
+                    RowSpec {
+                        glyph: tick_glyph(mark),
+                        title: pk.title.clone(),
+                        sub: format!(
+                            "{}  ·  {}  ·  {}",
+                            human_bytes(pk.size),
+                            pk.language,
+                            pk.description
+                        ),
+                        right: state,
+                        mark: mark != "[ ]",
+                        ..RowSpec::default()
+                    }
+                }
+                PackRow::Other(j) => {
+                    let o = &s.inv.others[j];
+                    let (mark, state) = s.row_state(r);
+                    RowSpec {
+                        glyph: tick_glyph(mark),
+                        title: o.file.clone(),
+                        sub: format!(
+                            "{}  ·  not in the catalog (an older version?), still readable",
+                            human_bytes(o.size)
+                        ),
+                        right: state,
+                        mark: mark != "[ ]",
+                        ..RowSpec::default()
+                    }
+                }
+            })
+            .collect();
+        let plan = s.plan();
+        let mut footer = format!(
+            "To add: {} ({})  ·  to remove: {}",
+            plan.get.len(),
+            human_bytes(plan.add_bytes),
+            plan.remove.len()
+        );
+        if let Some(free) = s.free {
+            footer.push_str(&format!("  ·  free space {}", human_bytes(free)));
+            if plan.add_bytes > free + plan.remove_bytes {
+                footer.push_str("  ·  NOT ENOUGH SPACE");
+            }
+        }
+        footer.push_str(
+            match &s.language {
+                Some(l) => format!("  ·  language {l} (f: change)"),
+                None => "  ·  all languages (f: choose one)".to_string(),
+            }
+            .as_str(),
+        );
+        self.rows_view(
+            rows,
+            "Click or Space: tick  ·  d download  ·  u from a USB stick  ·  s sets  ·  Enter details",
+            "No resource packs are offered on this system.",
+            footer,
+            p,
+        )
+    }
+
+    fn keys_view<'a>(
+        &self,
+        rows: &[resilience_shell::app::KeyRow],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        use resilience_shell::app::KeyRow;
+        let specs = rows
+            .iter()
+            .map(|r| {
+                let line = self.app.key_row_text(r);
+                // The text interface pads the name into a column: split there.
+                let (title, sub) = match line.find("  ") {
+                    Some(n) => (line[..n].trim().to_string(), line[n..].trim().to_string()),
+                    None => (line.clone(), String::new()),
+                };
+                let own = match r {
+                    KeyRow::Encryption | KeyRow::Signing | KeyRow::NoPgpKey => true,
+                    KeyRow::Pgp(k) => k.secret,
+                    KeyRow::Contact(_) => false,
+                };
+                RowSpec {
+                    glyph: if own { "\u{2605}" } else { "\u{263a}" },
+                    title,
+                    warn: sub.contains("not created") || sub.contains("revoked"),
+                    sub,
+                    ..RowSpec::default()
+                }
+            })
+            .collect();
+        self.rows_view(
+            specs,
+            "Enter details  ·  a add a key file  ·  t type a key  ·  g OpenPGP  ·  e export  ·  Del remove",
+            "",
+            "Your keys come first, then your contacts. Check a contact's key with them in \
+             person or by phone."
+                .into(),
             p,
         )
     }
@@ -2165,6 +2325,8 @@ struct RowSpec {
     mark: bool,
     /// The second line in the warning colour.
     warn: bool,
+    /// A section heading: not a button.
+    header: bool,
 }
 
 /// Four rising bars, lit by signal strength (0-100).
@@ -2186,6 +2348,16 @@ fn signal_bars<'a>(signal: u8, on: iced::Color, off: iced::Color) -> Element<'a,
 }
 
 /// The first letter of a name, for its round mark in the lists.
+/// The text interface's checkbox as one glyph.
+fn tick_glyph(mark: &str) -> &'static str {
+    match mark {
+        "[+]" => "\u{2295}",
+        "[-]" => "\u{2296}",
+        "[*]" => "\u{2713}",
+        _ => "\u{25cb}",
+    }
+}
+
 fn initial(name: &str) -> String {
     name.chars()
         .find(|c| c.is_alphanumeric())

@@ -34,6 +34,31 @@ NM
 chmod +x "$run/nmcli"
 printf 'handbook_dir = "%s"\n\n[tools]\nnmcli = "%s"\n' "$PWD/handbook" "$run/nmcli" > "$run/system.toml"
 export RESILIENCE_SYSTEM_CONFIG="$run/system.toml"
+# A sample resource pack catalog (nothing is downloaded in a preview).
+mkdir -p "$run/packs"
+z=$(printf '%064d' 0)
+cat > "$run/packs.toml" <<PK
+dir = "$run/packs"
+store_user = "resilience-packs"
+store = "/bin/false"
+pkexec = "/bin/false"
+pkttyagent = "/bin/false"
+curl = "/bin/false"
+sha256sum = "/bin/false"
+kiwix_serve = "/bin/false"
+browser = ["/bin/false"]
+session_shell = "/bin/sh"
+PK
+for e in "wikimed|Medical encyclopedia|Wikipedia's medicine articles, with pictures.|health|en|wikimed_2026-10.zim|2147483648" \
+         "wikihow|Practical guides|How-to guides for everyday tasks.|practical|en|wikihow_2026-09.zim|9663676416" \
+         "gutenberg|Free books|Project Gutenberg's public-domain books.|encyclopedia|fr|gutenberg_fr_2026-08.zim|5368709120"; do
+  IFS='|' read -r id t d c l f n <<EOF2
+$e
+EOF2
+  printf '[[pack]]\nid = "%s"\ntitle = "%s"\ndescription = "%s"\ncategory = "%s"\nlanguage = "%s"\nfile = "%s"\nsize = %s\nsha256 = "%s"\nurls = ["https://example.org/%s"]\nlicense = "CC-BY-SA-4.0"\nsource = "sample"\n' "$id" "$t" "$d" "$c" "$l" "$f" "$n" "$z" "$f" >> "$run/packs.toml"
+done
+: > "$run/packs/wikihow_2026-09.zim"
+export RESILIENCE_PACKS_CONFIG="$run/packs.toml"
 # A small home folder (Find files indexes it): a few sample files.
 mkdir -p "$run/home/Documents" "$run/home/Notes"
 cp LICENSE README.md "$run/home/Documents/" 2>/dev/null || true

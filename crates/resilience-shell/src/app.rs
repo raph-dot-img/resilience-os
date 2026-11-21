@@ -1392,6 +1392,8 @@ impl App {
             | View::PeerMenu { list, .. }
             | View::ChooseMode { list, .. }
             | View::Choices { list, .. }
+            | View::Packs { list, .. }
+            | View::Keys { list, .. }
             | View::Settings { list } => Some(list),
             _ => None,
         }
@@ -1421,6 +1423,8 @@ impl App {
             | View::PeerMenu { list, .. }
             | View::ChooseMode { list, .. }
             | View::Choices { list, .. }
+            | View::Packs { list, .. }
+            | View::Keys { list, .. }
             | View::Settings { list } => list.selected(),
             _ => None,
         }
