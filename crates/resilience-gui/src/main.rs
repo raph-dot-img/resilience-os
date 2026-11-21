@@ -27,7 +27,9 @@ use iced::{Element, Fill, Length, Subscription, Task, keyboard, window};
 use resilience_core::catalog::Category;
 use resilience_core::config::ThemeName;
 use resilience_core::messages;
-use resilience_shell::app::{App, Effect, Entry, SearchHit, Startup, View, category_description};
+use resilience_shell::app::{
+    App, Effect, Entry, Modal, SearchHit, Startup, View, category_description,
+};
 use resilience_shell::input::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::style::Palette;
@@ -98,6 +100,8 @@ enum Message {
     /// Mouse wheel over a text page: lines (positive = towards the end).
     Wheel(i32),
     RunDone(String, Result<i32, String>),
+    /// A dialog button: the key it stands for.
+    Press(KeyEvent),
 }
 
 struct Gui {
@@ -218,7 +222,7 @@ impl Gui {
 
     fn wants_text_panel(&self) -> bool {
         self.running.is_none()
-            && (self.app.modal.is_some()
+            && ((self.app.modal.is_some() && !self.native_modal())
                 || !matches!(
                     self.app.view(),
                     View::Home { .. }
@@ -296,6 +300,12 @@ impl Gui {
                 } else {
                     self.app.choose_row(i)
                 }
+            }
+            Message::Press(k) => {
+                if self.running.is_some() {
+                    return Task::none();
+                }
+                self.app.handle_key(k)
             }
             Message::Back => self
                 .app
@@ -379,6 +389,10 @@ impl Gui {
                 }
                 _ => self.text_view(&p),
             }
+        };
+        let body: Element<'_, Message> = match self.dialog_view(&p) {
+            Some(d) if self.running.is_none() => iced::widget::stack![body, d].into(),
+            _ => body,
         };
         let page = column![self.top_bar(&p), body, self.status_bar(&p)];
         container(page)
@@ -1711,6 +1725,240 @@ impl Gui {
             String::new(),
             p,
         )
+    }
+
+    /// Dialogs drawn natively over the screen (the others use the text
+    /// panel: ticking recipients, the clock, the installer's questions).
+    fn native_modal(&self) -> bool {
+        matches!(
+            self.app.modal,
+            Some(
+                Modal::Confirm { .. }
+                    | Modal::Message { .. }
+                    | Modal::NewNote { .. }
+                    | Modal::WifiPassword { .. }
+                    | Modal::ManPage { .. }
+                    | Modal::PackSearch { .. }
+                    | Modal::ShareInput { .. }
+                    | Modal::ChatInput { .. }
+                    | Modal::ExpectedSum { .. }
+            )
+        )
+    }
+
+    fn dialog_view<'a>(&self, p: &Palette) -> Option<Element<'a, Message>> {
+        use resilience_shell::app::{ChatInput, ShareInput};
+        let p = *p;
+        let m = self.app.modal.as_ref()?;
+        let key = |c: KeyCode| Message::Press(KeyEvent::new(c, KeyModifiers::NONE));
+        let cursor = if (self.app.tick / 2).is_multiple_of(2) {
+            "\u{258f}"
+        } else {
+            " "
+        };
+        let btn = |label: String, msg: Message, primary: bool, danger: bool, focused: bool| {
+            button(text(label).size(15).font(style::UI_FONT_BOLD))
+                .on_press(msg)
+                .padding([10, 20])
+                .style(move |t, s| style::dialog_button(t, s, primary, danger, focused))
+        };
+        // (title, body, field shown, hint, error, buttons)
+        let mut field: Option<String> = None;
+        let mut hint = String::new();
+        let mut err: Option<String> = None;
+        let mut buttons: Vec<Element<'a, Message>> = Vec::new();
+        let mut is_error = false;
+        let ok_cancel = |ok: &str, buttons: &mut Vec<Element<'a, Message>>| {
+            buttons.push(btn("Cancel".into(), key(KeyCode::Esc), false, false, false).into());
+            buttons.push(btn(ok.into(), key(KeyCode::Enter), true, false, true).into());
+        };
+        let (title, body): (String, String) = match m {
+            Modal::Message { title, body, error } => {
+                is_error = *error;
+                buttons.push(btn("OK".into(), key(KeyCode::Enter), true, *error, true).into());
+                (sentence_case(title), body.clone())
+            }
+            Modal::Confirm {
+                title,
+                body,
+                confirm,
+                yes_focused,
+                ..
+            } => {
+                buttons.push(
+                    btn(
+                        "Cancel".into(),
+                        key(KeyCode::Char('n')),
+                        false,
+                        false,
+                        !*yes_focused,
+                    )
+                    .into(),
+                );
+                buttons.push(
+                    btn(
+                        confirm.clone(),
+                        key(KeyCode::Char('y')),
+                        true,
+                        false,
+                        *yes_focused,
+                    )
+                    .into(),
+                );
+                hint = "y: confirm   \u{00b7}   n or Esc: cancel".into();
+                (sentence_case(title), body.clone())
+            }
+            Modal::NewNote { value, error } => {
+                field = Some(value.clone());
+                err = error.clone();
+                hint = "Letters, digits, spaces, - _ .".into();
+                ok_cancel("Create", &mut buttons);
+                ("New note".into(), "Name for the new note:".into())
+            }
+            Modal::WifiPassword {
+                net, value, error, ..
+            } => {
+                field = Some("\u{2022}".repeat(value.chars().count()));
+                err = error.clone();
+                hint = "Usually on a label on the router.".into();
+                ok_cancel("Connect", &mut buttons);
+                (
+                    "Wi-Fi password".into(),
+                    format!(
+                        "Password for the Wi-Fi network \u{201c}{}\u{201d}:",
+                        net.ssid
+                    ),
+                )
+            }
+            Modal::ManPage { value, error } => {
+                field = Some(value.clone());
+                err = error.clone();
+                hint =
+                    "For example: ls, 5 passwd, copy files. In a page: q quits, / searches.".into();
+                ok_cancel("Open", &mut buttons);
+                (
+                    "Manual pages".into(),
+                    "Command name, or words to search the manuals for:".into(),
+                )
+            }
+            Modal::PackSearch { item, value } => {
+                field = Some(value.clone());
+                hint = "Words to look for in the full text.".into();
+                ok_cancel("Search", &mut buttons);
+                (
+                    "Search".into(),
+                    format!("Search in \u{201c}{}\u{201d}:", item.title),
+                )
+            }
+            Modal::ShareInput { kind, value, error } => {
+                field = Some(value.clone());
+                err = error.clone();
+                let (t, ask, h, ok) = match kind {
+                    ShareInput::Address => (
+                        "Address of a computer",
+                        "Address of the computer that shares (for example 192.168.1.20, or fe80::1%bat0 on the mesh):",
+                        "A computer on a network this computer is on.",
+                        "Open",
+                    ),
+                    ShareInput::Name => (
+                        "Name others see",
+                        "The name other computers will see (a place, not a person):",
+                        "Up to 32 letters, digits, spaces or dashes.",
+                        "Save",
+                    ),
+                };
+                hint = h.into();
+                ok_cancel(ok, &mut buttons);
+                (t.into(), ask.into())
+            }
+            Modal::ChatInput { kind, value, error } => {
+                field = Some(value.clone());
+                err = error.clone();
+                let (t, ask, h, ok) = match kind {
+                    ChatInput::Address => (
+                        "Write to an address",
+                        "Address of the person (they find it under m in Local messages):"
+                            .to_string(),
+                        "32 characters, spaces allowed.",
+                        "Continue",
+                    ),
+                    ChatInput::Text { peer } => (
+                        "Write a message",
+                        format!("Message for {}:", messages::short_address(peer)),
+                        "Ctrl+N: new line. Kept and retried until delivered.",
+                        "Send",
+                    ),
+                    ChatInput::FileText { peer, path, size } => (
+                        "Send a file",
+                        format!(
+                            "File \u{201c}{}\u{201d} ({}) for {}. A message with it (optional):",
+                            messages::clean_line(
+                                &path
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy())
+                                    .unwrap_or_default(),
+                                60
+                            ),
+                            messages::size_text(*size),
+                            messages::short_address(peer)
+                        ),
+                        "Ctrl+N: new line. A copy is sent; it is retried until delivered.",
+                        "Send",
+                    ),
+                    ChatInput::ContactName { .. } => (
+                        "Name this person",
+                        "Your own name for this address (empty: no name):".to_string(),
+                        "Only you see it.",
+                        "Save",
+                    ),
+                };
+                hint = h.into();
+                ok_cancel(ok, &mut buttons);
+                (t.into(), ask)
+            }
+            Modal::ExpectedSum { file, value, error } => {
+                field = Some(value.clone());
+                err = error.clone();
+                hint = "SHA-256, SHA-512, SHA-1 or MD5, as published.".into();
+                ok_cancel("Compare", &mut buttons);
+                (
+                    "Compare with a checksum".into(),
+                    format!(
+                        "Checksum that \u{201c}{}\u{201d} should have:",
+                        file.file_name()
+                            .map(|n| n.to_string_lossy())
+                            .unwrap_or_default()
+                    ),
+                )
+            }
+            _ => return None,
+        };
+        let mut c = column![
+            text(title).size(22).font(style::UI_FONT_BOLD),
+            text(body).size(15),
+        ]
+        .spacing(14);
+        if let Some(v) = field {
+            c = c.push(
+                container(text(format!("{v}{cursor}")).size(17))
+                    .padding([12, 16])
+                    .width(Fill)
+                    .style(move |_| style::field(&p)),
+            );
+        }
+        if let Some(e) = err {
+            c = c.push(text(e).size(14).color(p.error));
+        } else if !hint.is_empty() {
+            c = c.push(text(hint).size(13).style(style::dim_text));
+        }
+        c = c.push(row![Space::new().width(Fill), row(buttons).spacing(12)]);
+        let card = container(c)
+            .padding(28)
+            .max_width(620.0)
+            .style(move |_| style::dialog(&p, is_error));
+        Some(iced::widget::opaque(
+            container(card).center(Fill).padding(24).style(style::scrim),
+        ))
     }
 
     fn wifi_view<'a>(

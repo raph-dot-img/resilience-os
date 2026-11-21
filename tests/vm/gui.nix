@@ -76,6 +76,15 @@
         machine.send_key("esc")
         machine.wait_for_text("Hello", timeout=90)
 
+    with subtest("a native dialog: Cancel is the default"):
+        machine.send_key("q")
+        machine.wait_for_text("Log out", timeout=90)
+        machine.screenshot("gui-dialog")
+        machine.send_key("ret")
+        time.sleep(3)
+        machine.succeed("pgrep -u alice -x resilience-gui")
+        machine.wait_for_text("Hello", timeout=90)
+
     with subtest("native offline library and Find files"):
         machine.send_key("ret")
         machine.wait_for_text("Handbook", timeout=90)

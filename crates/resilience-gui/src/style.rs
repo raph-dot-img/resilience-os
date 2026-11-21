@@ -328,6 +328,71 @@ pub fn key_from_iced(ev: &keyboard::Event) -> Option<KeyEvent> {
     Some(KeyEvent::new(code, m))
 }
 
+/// A dialog button: `primary` is filled with the accent (or the error
+/// colour when `danger`); `focused` is the one Enter presses.
+pub fn dialog_button(
+    t: &Theme,
+    s: button::Status,
+    primary: bool,
+    danger: bool,
+    focused: bool,
+) -> button::Style {
+    let p = pal(t);
+    let hover = matches!(s, button::Status::Hovered | button::Status::Pressed);
+    let fill = if danger { p.error } else { p.accent };
+    let (bg, fg) = if primary {
+        (
+            Color {
+                a: if hover { 0.85 } else { 1.0 },
+                ..fill
+            },
+            p.bg,
+        )
+    } else if hover {
+        (p.surface_hover, p.text)
+    } else {
+        (p.surface, p.text)
+    };
+    button::Style {
+        background: Some(Background::Color(bg)),
+        text_color: fg,
+        border: Border {
+            color: if focused { p.text } else { Color::TRANSPARENT },
+            width: if focused { 2.0 } else { 0.0 },
+            radius: 10.0.into(),
+        },
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
+/// The dimmed layer behind a dialog.
+pub fn scrim(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color {
+            a: 0.72,
+            ..Color::BLACK
+        })),
+        ..container::Style::default()
+    }
+}
+
+/// The dialog card.
+pub fn dialog(p: &Palette, error: bool) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(p.surface)),
+        text_color: Some(p.text),
+        border: Border {
+            color: if error { p.error } else { p.surface_hover },
+            width: 1.0,
+            radius: 16.0.into(),
+        },
+        // No shadow: tiny-skia draws it over the card.
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
