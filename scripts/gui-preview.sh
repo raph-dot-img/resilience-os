@@ -20,7 +20,19 @@ cargo build -q -p resilience-gui
 gui=$PWD/target/debug/resilience-gui
 run=$(mktemp -d); chmod 700 "$run"
 # The handbook from this checkout (a system has it under /run/current-system).
-printf 'handbook_dir = "%s"\n' "$PWD/handbook" > "$run/system.toml"
+# A stand-in nmcli with sample Wi-Fi networks (the host may have none).
+cat > "$run/nmcli" <<'NM'
+#!/bin/sh
+case "$*" in
+  *"TYPE device"*) echo wifi; echo ethernet ;;
+  *"radio wifi"*) echo enabled ;;
+  *"connection show"*) echo 'Home:5a1d-0001:802-11-wireless:yes' ;;
+  *"wifi list"*) printf '%s\n' '*:Home:WPA2:82' ' :Cafe Libre::64' ' :Library 2nd floor:WPA2 WPA3:41' ' :Campus:WPA2 802.1X:30' ' :Neighbour:WPA2:12' ;;
+  *) exit 1 ;;
+esac
+NM
+chmod +x "$run/nmcli"
+printf 'handbook_dir = "%s"\n\n[tools]\nnmcli = "%s"\n' "$PWD/handbook" "$run/nmcli" > "$run/system.toml"
 export RESILIENCE_SYSTEM_CONFIG="$run/system.toml"
 # A small home folder (Find files indexes it): a few sample files.
 mkdir -p "$run/home/Documents" "$run/home/Notes"

@@ -200,6 +200,7 @@ impl Gui {
                         | View::Chats { .. }
                         | View::Nearby { .. }
                         | View::Chat { .. }
+                        | View::Wifi { .. }
                 ))
     }
 
@@ -308,6 +309,9 @@ impl Gui {
                 View::Chats { rows, status, .. } => self.chats_view(rows, status, &p),
                 View::Nearby { rows, .. } => self.nearby_view(rows, &p),
                 View::Chat { records, .. } => self.chat_view(records, &p),
+                View::Wifi {
+                    overview, error, ..
+                } => self.wifi_view(overview.as_ref(), error.as_deref(), &p),
                 View::Help { topic, scroll } => {
                     self.pager_view(help_text(*topic, self.app.mode()), *scroll, &p)
                 }
@@ -378,6 +382,7 @@ impl Gui {
             }
             View::Library { .. } => "Offline library".into(),
             View::Chats { .. } => "Local messages".into(),
+            View::Wifi { .. } => "Wi-Fi".into(),
             View::Nearby { .. } => "People nearby".into(),
             View::Chat { peer, name, .. } => name.display(peer),
             _ => String::new(),
@@ -1072,6 +1077,105 @@ impl Gui {
         .into()
     }
 
+    fn wifi_view<'a>(
+        &self,
+        overview: Option<&'a resilience_core::wifi::Overview>,
+        error: Option<&str>,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        use resilience_core::wifi::Security;
+        let p = *p;
+        let hint = "Enter or click: join   \u{00b7}   d: disconnect   \u{00b7}   f: forget   \u{00b7}   r: scan again   \u{00b7}   w: switch Wi-Fi on";
+        let problem = match (overview, error) {
+            (_, Some(e)) => Some(format!(
+                "Wi-Fi information could not be read: {e}. Press r to try again."
+            )),
+            (Some(o), None) if o.devices == 0 => Some(
+                "No Wi-Fi adapter was found. If this computer has one, it may need firmware \
+                 that is not included, or a hardware switch may be off. A network cable works \
+                 without any setup."
+                    .into(),
+            ),
+            (Some(o), None) if !o.radio_on => {
+                Some("Wi-Fi is switched off. Press w to switch it on.".into())
+            }
+            (None, None) => Some("Looking for networks\u{2026}".into()),
+            _ => None,
+        };
+        if let Some(msg) = problem {
+            return column![
+                centered_note(&msg),
+                text(hint).size(13).style(style::dim_text)
+            ]
+            .padding([8, 28])
+            .into();
+        }
+        let nets = overview.map_or(&[][..], |o| o.networks.as_slice());
+        let sel = self.app.selected_row();
+        let items: Vec<Element<'a, Message>> = nets
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                let state = if n.in_use {
+                    "Connected".to_string()
+                } else if n.saved.is_some() {
+                    "Saved".to_string()
+                } else if let Some(pb) = n.problem() {
+                    sentence_case(pb)
+                } else if n.security == Security::Open {
+                    "Open: anyone nearby can read unencrypted traffic".to_string()
+                } else {
+                    String::new()
+                };
+                button(
+                    row![
+                        signal_bars(n.signal, if n.in_use { p.accent } else { p.text }, p.dim),
+                        column![
+                            text(n.ssid.clone()).size(16).font(if n.in_use {
+                                style::UI_FONT_BOLD
+                            } else {
+                                style::UI_FONT
+                            }),
+                            text(state)
+                                .size(13)
+                                .color(if n.in_use { p.accent } else { p.dim })
+                        ]
+                        .width(Fill),
+                        text(n.security.label()).size(13).style(style::dim_text),
+                        text(format!("{}%", n.signal))
+                            .size(13)
+                            .style(style::dim_text)
+                            .width(Length::Fixed(48.0)),
+                    ]
+                    .spacing(12)
+                    .align_y(iced::Center),
+                )
+                .on_press(Message::Choose(i))
+                .width(Fill)
+                .padding([12, 18])
+                .style(move |t, st| style::row_button(t, st, sel == Some(i)))
+                .into()
+            })
+            .collect();
+        let list: Element<'a, Message> = if items.is_empty() {
+            centered_note(
+                "No networks found yet. Scanning takes a few seconds; press r to look again.",
+            )
+        } else {
+            scrollable(column(items).spacing(4)).height(Fill).into()
+        };
+        column![
+            row![Space::new().width(Fill), text(hint).size(13).style(style::dim_text)],
+            list,
+            text("Networks you join are saved for your account only. Other accounts on this computer do not see them.")
+                .size(13)
+                .style(style::dim_text),
+        ]
+        .spacing(10)
+        .padding([8, 28])
+        .into()
+    }
+
     fn entry_description(&self, e: Entry) -> String {
         match e {
             Entry::App(i) => self.app.catalog.apps[i].description.clone(),
@@ -1159,6 +1263,24 @@ fn grid<'a>(tiles: Vec<Element<'a, Message>>, cols: usize) -> Element<'a, Messag
     scrollable(container(rows).padding([8, 28]))
         .height(Fill)
         .into()
+}
+
+/// Four rising bars, lit by signal strength (0-100).
+fn signal_bars<'a>(signal: u8, on: iced::Color, off: iced::Color) -> Element<'a, Message> {
+    let lit = usize::from(signal.min(100)).div_ceil(25).max(1);
+    let mut r = row![].spacing(1).width(Length::Fixed(64.0));
+    for (i, g) in ["\u{2582}", "\u{2584}", "\u{2586}", "\u{2588}"]
+        .iter()
+        .enumerate()
+    {
+        let c = if i < lit {
+            on
+        } else {
+            iced::Color { a: 0.35, ..off }
+        };
+        r = r.push(text(*g).size(16).font(style::MONO_FONT).color(c));
+    }
+    r.into()
 }
 
 /// The first letter of a name, for its round mark in the lists.

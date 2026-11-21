@@ -1361,6 +1361,7 @@ impl App {
             | View::Chats { list, .. }
             | View::Nearby { list, .. }
             | View::Chat { list, .. }
+            | View::Wifi { list, .. }
             | View::Settings { list } => Some(list),
             _ => None,
         }
@@ -1378,6 +1379,7 @@ impl App {
             | View::Chats { list, .. }
             | View::Nearby { list, .. }
             | View::Chat { list, .. }
+            | View::Wifi { list, .. }
             | View::Settings { list } => list.selected(),
             _ => None,
         }
