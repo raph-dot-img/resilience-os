@@ -66,7 +66,7 @@
         sleep 2
       done
       echo "The graphical interface failed 3 times: using the text interface."
-      echo "Details: journalctl --user, or the log in ~/.local/state/resilience."
+      echo "Details: ~/.local/state/resilience/gui.log."
       sleep 3
     fi
 

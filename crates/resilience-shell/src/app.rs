@@ -1442,9 +1442,10 @@ impl App {
     /// lines it can show, as the TUI's does).
     pub fn scroll_mut(&mut self) -> Option<&mut usize> {
         match self.stack.last_mut()? {
-            View::Pager { scroll, .. } | View::Status { scroll } | View::Help { scroll, .. } => {
-                Some(scroll)
-            }
+            View::Pager { scroll, .. }
+            | View::Status { scroll }
+            | View::Network { scroll }
+            | View::Help { scroll, .. } => Some(scroll),
             _ => None,
         }
     }

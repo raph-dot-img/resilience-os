@@ -127,7 +127,8 @@ which corrupts text next to box-drawing characters with our console font.
 | — | Native dialog: `q` asks "Log out", Enter keeps the default Cancel, the GUI stays up | PASS (2026-11-21, run 8 at `b29e2ae`: 9/9 subtests) |
 | — | Native screens for packs, keys, pack sets, nearby computer packs/files, sharing setup, status/network pages: drawn in the development preview (`scripts/gui-preview.sh`; packs, keys, Encrypt for and network pages looked at) | PASS (preview only, not in the VM) |
 | — | Full run at `7ceaeed` (2026-11-22): all 27 checks + live-standard, live-standard-gui, live-minimal toplevels, one eval per derivation | PASS |
-| — | Real hardware, touchpad/mouse clicks, ISO boot | NOT TESTED |
+| — | ISO `iso-gui` at `f5e46c8` (1.67 GB, still named 0.6.0 before the bump) boots in QEMU, BIOS and UEFI (`tests/iso/smoke.py`): boot menu, licence notice in the GUI, home, network, status, search, Local messages "Messaging is on"; screenshots looked at | PASS (2026-11-22) |
+| — | Real hardware, touchpad/mouse clicks | NOT TESTED |
 
 ### VM: `vm-modes` — isolated VLAN, three accounts
 

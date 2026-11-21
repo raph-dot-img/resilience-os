@@ -49,6 +49,9 @@ fn render_list(f: &mut Frame, l: List, area: Rect, list: &mut resilience_shell::
         .with_selected(list.selected())
         .with_offset(list.offset());
     f.render_stateful_widget(l, area, &mut st);
+    // ratatui clamps a stale selection to the rows drawn (None when there
+    // are none): keep that, as when the shell used ratatui's state.
+    list.select(st.selected());
     list.set_offset(st.offset());
 }
 

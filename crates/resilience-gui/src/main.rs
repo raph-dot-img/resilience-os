@@ -37,13 +37,17 @@ use crate::style::Palette;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        None => match gui() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("resilience-gui: {e}");
-                ExitCode::FAILURE
+        None => {
+            init_logging();
+            match gui() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    tracing::error!("the interface stopped: {e}");
+                    eprintln!("resilience-gui: {e}");
+                    ExitCode::FAILURE
+                }
             }
-        },
+        }
         Some("run") if args.len() == 2 => run::run_file(&args[1]),
         Some("xkb") => {
             println!("{}", xkb_layout());
@@ -58,6 +62,48 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// The shell's log lines (and its warnings) go to
+/// ~/.local/state/resilience/gui.log, as the TUI's go to tui.log: the
+/// GUI's stderr is the console under cage, which nobody reads.
+fn init_logging() {
+    use std::os::unix::fs::DirBuilderExt;
+    let home = resilience_core::config::home_dir();
+    let dir = resilience_core::config::state_home(&home).join("resilience");
+    if std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)
+        .is_err()
+    {
+        return;
+    }
+    let path = dir.join("gui.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 1024 * 1024) {
+        let _ = std::fs::rename(&path, dir.join("gui.log.old"));
+    }
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    else {
+        return;
+    };
+    let filter = if std::env::var_os("RESILIENCE_DEBUG").is_some() {
+        tracing::Level::DEBUG
+    } else {
+        tracing::Level::INFO
+    };
+    let _ = tracing_subscriber::fmt()
+        .with_writer(std::sync::Mutex::new(file))
+        .with_ansi(false)
+        .with_max_level(filter)
+        .try_init();
+    tracing::info!(
+        version = resilience_core::VERSION,
+        "graphical interface starting"
+    );
 }
 
 /// The account's layout (Settings, else the system's) as XKB names; US
@@ -120,6 +166,8 @@ struct Gui {
 
 /// The id of the scrollable row list on native list screens.
 const LIST: &str = "rows";
+/// An id no widget has: focusing it takes the focus off the search box.
+const NO_FOCUS: &str = "no-focus";
 
 impl Gui {
     fn new() -> (Gui, Task<Message>) {
@@ -160,7 +208,27 @@ impl Gui {
         }
         let key = matches!(m, Message::Key(_));
         let (depth, before) = (self.app.stack.len(), self.app.selected_row());
+        let modal_before = self.app.modal.is_some();
+        let layout_before = self.app.settings.keyboard.clone();
         let mut task = self.step(m);
+        // The search box keeps the keyboard focus after its result opens:
+        // drop it when the screen or a dialog changes, or it would swallow
+        // what is typed next (a dialog's text, a screen's letter keys).
+        let searching = self.app.modal.is_none() && matches!(self.app.view(), View::Search { .. });
+        if !searching && (self.app.stack.len() != depth || self.app.modal.is_some() != modal_before)
+        {
+            task = Task::batch([
+                task,
+                iced::widget::operation::focus(iced::widget::Id::new(NO_FOCUS)),
+            ]);
+        }
+        // cage reads the XKB layout once, at session start (gui.nix).
+        if self.app.settings.keyboard != layout_before {
+            self.app.notify(
+                resilience_shell::app::Level::Info,
+                "The graphical interface keeps its layout until you log out and in again.",
+            );
+        }
         // Arrow keys move the selection: keep it on screen. Snapping to the
         // same fraction of the list always shows that row.
         let after = self.app.selected_row();
@@ -170,7 +238,14 @@ impl Gui {
             && let Some(i) = after
         {
             {
-                let n = self.rows_shown.get().max(2);
+                // A grid of tiles scrolls by rows of tiles.
+                let (i, n) = match self.grid_len() {
+                    Some(len) => {
+                        let cols = self.columns().max(1);
+                        (i / cols, len.div_ceil(cols).max(2))
+                    }
+                    None => (i, self.rows_shown.get().max(2)),
+                };
                 let mut y = (i as f32 / (n - 1) as f32).clamp(0.0, 1.0);
                 // A conversation is anchored at its newest (last) message.
                 if matches!(self.app.view(), View::Chat { .. }) {
@@ -200,12 +275,19 @@ impl Gui {
 
     /// Arrow keys on a grid of tiles: Left/Right move by one, Up/Down by a
     /// row. Returns false when the key is not for the grid.
-    fn grid_move(&mut self, k: KeyEvent) -> bool {
-        let n = match self.app.view() {
+    /// Number of tiles when the current screen is a grid of tiles.
+    fn grid_len(&self) -> Option<usize> {
+        Some(match self.app.view() {
             View::Home { .. } => self.app.home_categories().len(),
             View::Category { cat, .. } => self.app.entries(*cat).len(),
             View::Library { items, .. } => items.len(),
-            _ => return false,
+            _ => return None,
+        })
+    }
+
+    fn grid_move(&mut self, k: KeyEvent) -> bool {
+        let Some(n) = self.grid_len() else {
+            return false;
         };
         if self.app.modal.is_some() || n == 0 || !k.modifiers.is_empty() {
             return false;
@@ -355,6 +437,9 @@ impl Gui {
                 }
                 self.app.handle_key(k)
             }
+            Message::Back | Message::Home | Message::Search(_) if self.running.is_some() => {
+                return Task::none();
+            }
             Message::Back => self
                 .app
                 .handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
@@ -495,7 +580,10 @@ impl Gui {
         };
         r = r.push(
             text_input("Search apps, guides, places\u{2026}", &query)
-                .on_input(Message::Search)
+                // Under a dialog it takes no text: what is typed is the dialog's.
+                .on_input_maybe(
+                    (self.app.modal.is_none() && self.running.is_none()).then_some(Message::Search),
+                )
                 .padding([10, 16])
                 .size(16)
                 .width(Length::Fixed(380.0))
@@ -751,6 +839,8 @@ impl Gui {
         let total = match self.app.view() {
             View::Pager { text, .. } => text.lines().count(),
             View::Help { topic, .. } => help_text(*topic, self.app.mode()).lines().count(),
+            View::Status { .. } => resilience_tui::ui::status_text(&self.app).lines().count(),
+            View::Network { .. } => resilience_tui::ui::network_text(&self.app).lines().count(),
             _ => return,
         };
         if let Some(sc) = self.app.scroll_mut() {
@@ -860,10 +950,14 @@ impl Gui {
         } else {
             format!("{} found", hits.len())
         };
+        // At most 200 rows, always including the selection (End, or Up
+        // from the first row, selects the last of all the hits).
+        let start = sel.map_or(0, |s| s.saturating_sub(199));
         let rows: Vec<Element<'a, Message>> = hits
             .iter()
-            .take(200)
             .enumerate()
+            .skip(start)
+            .take(200)
             .map(|(i, e)| {
                 let (folder, name) = match e.shown.rsplit_once('/') {
                     Some((d, n)) => (d.to_string(), n.to_string()),
@@ -2678,6 +2772,7 @@ fn grid<'a>(tiles: Vec<Element<'a, Message>>, cols: usize) -> Element<'a, Messag
         rows = rows.push(r);
     }
     scrollable(container(rows).padding([8, 28]))
+        .id(iced::widget::Id::new(LIST))
         .height(Fill)
         .into()
 }
