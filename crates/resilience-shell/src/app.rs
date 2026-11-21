@@ -1343,6 +1343,25 @@ impl App {
                     .map(SearchHit::Page),
             );
         }
+        // Names that start with the query first, then names that contain
+        // it, then matches in descriptions only ("recovery" opens Recovery
+        // & diagnostics, not the Handbook whose description mentions it).
+        let rank = |h: &SearchHit| {
+            let name = match h {
+                SearchHit::Category(c) => c.title().to_lowercase(),
+                SearchHit::Entry(Entry::Builtin(b)) => b.name().to_lowercase(),
+                SearchHit::Entry(Entry::App(i)) => self.catalog.apps[*i].name.to_lowercase(),
+                SearchHit::Page(p) => p.title.to_lowercase(),
+            };
+            if name.starts_with(&q) {
+                0
+            } else if name.contains(&q) {
+                1
+            } else {
+                2
+            }
+        };
+        hits.sort_by_key(|h| rank(h));
         hits
     }
 
@@ -1362,6 +1381,10 @@ impl App {
             | View::Nearby { list, .. }
             | View::Chat { list, .. }
             | View::Wifi { list, .. }
+            | View::Recovery { list }
+            | View::Users { list, .. }
+            | View::Media { list, .. }
+            | View::Generations { list, .. }
             | View::Settings { list } => Some(list),
             _ => None,
         }
@@ -1380,6 +1403,10 @@ impl App {
             | View::Nearby { list, .. }
             | View::Chat { list, .. }
             | View::Wifi { list, .. }
+            | View::Recovery { list }
+            | View::Users { list, .. }
+            | View::Media { list, .. }
+            | View::Generations { list, .. }
             | View::Settings { list } => list.selected(),
             _ => None,
         }

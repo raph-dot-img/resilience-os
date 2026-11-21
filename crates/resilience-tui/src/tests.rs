@@ -5059,3 +5059,16 @@ fn go_home_never_skips_the_licence_notice() {
     assert_eq!(a.choose_row(0), Effect::None);
     assert!(matches!(a.view(), View::Licence { .. }));
 }
+
+#[test]
+fn search_ranks_names_before_descriptions() {
+    let a = app(Mode::UltraStable, "search-rank");
+    let hits = a.search("recovery");
+    assert!(
+        matches!(
+            hits.first(),
+            Some(SearchHit::Entry(Entry::Builtin(Builtin::Recovery)))
+        ),
+        "{hits:?}"
+    );
+}

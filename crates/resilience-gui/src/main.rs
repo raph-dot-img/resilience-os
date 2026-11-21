@@ -201,6 +201,10 @@ impl Gui {
                         | View::Nearby { .. }
                         | View::Chat { .. }
                         | View::Wifi { .. }
+                        | View::Recovery { .. }
+                        | View::Users { .. }
+                        | View::Media { .. }
+                        | View::Generations { .. }
                 ))
     }
 
@@ -309,6 +313,12 @@ impl Gui {
                 View::Chats { rows, status, .. } => self.chats_view(rows, status, &p),
                 View::Nearby { rows, .. } => self.nearby_view(rows, &p),
                 View::Chat { records, .. } => self.chat_view(records, &p),
+                View::Recovery { .. } => self.recovery_view(&p),
+                View::Users { rows, error, .. } => self.users_view(rows, error.as_deref(), &p),
+                View::Media { volumes, error, .. } => {
+                    self.media_view(volumes, error.as_deref(), &p)
+                }
+                View::Generations { gens, .. } => self.generations_view(gens, &p),
                 View::Wifi {
                     overview, error, ..
                 } => self.wifi_view(overview.as_ref(), error.as_deref(), &p),
@@ -383,6 +393,18 @@ impl Gui {
             View::Library { .. } => "Offline library".into(),
             View::Chats { .. } => "Local messages".into(),
             View::Wifi { .. } => "Wi-Fi".into(),
+            View::Recovery { .. } => "Recovery & diagnostics".into(),
+            View::Users { .. } => "Users & security modes".into(),
+            View::Generations { .. } => "System generations".into(),
+            View::Media { purpose, .. } => match purpose {
+                resilience_shell::app::MediaPurpose::InstallPacks => "Copy packs from a USB stick",
+                resilience_shell::app::MediaPurpose::ReadPacks => "Read packs on a USB stick",
+                resilience_shell::app::MediaPurpose::Backups => "Backups & USB sticks",
+                resilience_shell::app::MediaPurpose::ExportKeys => {
+                    "Save your public keys on a USB stick"
+                }
+            }
+            .into(),
             View::Nearby { .. } => "People nearby".into(),
             View::Chat { peer, name, .. } => name.display(peer),
             _ => String::new(),
@@ -1077,6 +1099,244 @@ impl Gui {
         .into()
     }
 
+    /// A native list of rows: the shared look of the simple menus.
+    fn rows_view<'a>(
+        &self,
+        rows: Vec<RowSpec>,
+        hint: &'static str,
+        empty: &str,
+        footer: String,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let p = *p;
+        let sel = self.app.selected_row();
+        let list: Element<'a, Message> = if rows.is_empty() {
+            centered_note(empty)
+        } else {
+            let items: Vec<Element<'a, Message>> = rows
+                .into_iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let mut info = column![text(r.title).size(16).font(style::UI_FONT_BOLD)];
+                    if !r.sub.is_empty() {
+                        info = info.push(text(r.sub).size(13).color(if r.warn {
+                            p.warn
+                        } else {
+                            p.dim
+                        }));
+                    }
+                    button(
+                        row![
+                            text(r.glyph)
+                                .size(20)
+                                .color(p.accent)
+                                .width(Length::Fixed(32.0)),
+                            info.width(Fill),
+                            text(r.right)
+                                .size(13)
+                                .color(if r.mark { p.accent } else { p.dim }),
+                        ]
+                        .spacing(12)
+                        .align_y(iced::Center),
+                    )
+                    .on_press(Message::Choose(i))
+                    .width(Fill)
+                    .padding([12, 18])
+                    .style(move |t, st| style::row_button(t, st, sel == Some(i)))
+                    .into()
+                })
+                .collect();
+            scrollable(column(items).spacing(4)).height(Fill).into()
+        };
+        let mut c = column![
+            row![
+                Space::new().width(Fill),
+                text(hint).size(13).style(style::dim_text)
+            ],
+            list
+        ]
+        .spacing(10)
+        .padding([8, 28]);
+        if !footer.is_empty() {
+            c = c.push(text(footer).size(13).style(style::dim_text));
+        }
+        c.into()
+    }
+
+    fn recovery_view<'a>(&self, p: &Palette) -> Element<'a, Message> {
+        let rows = self
+            .app
+            .recovery_items()
+            .iter()
+            .enumerate()
+            .map(|(i, r)| RowSpec {
+                glyph: "\u{2692}",
+                title: r.name().to_string(),
+                sub: r.description().to_string(),
+                right: format!("{}", i + 1),
+                ..RowSpec::default()
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter, click or its number: open",
+            "",
+            "Other consoles always offer a text login: Ctrl+Alt+F2 (back here: Ctrl+Alt+F1)."
+                .into(),
+            p,
+        )
+    }
+
+    fn users_view<'a>(
+        &self,
+        rows: &[resilience_core::admin::AccountRow],
+        error: Option<&str>,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        if let Some(e) = error {
+            return centered_note(&format!(
+                "The list of accounts could not be read: {e}. Security modes can still be \
+                 changed by an administrator in the system configuration."
+            ));
+        }
+        let rows = rows
+            .iter()
+            .map(|r| {
+                let you = r.name == self.app.who.user;
+                let mut sub = if r.description.is_empty() {
+                    String::new()
+                } else {
+                    r.description.clone()
+                };
+                let pending = r.active != r.effective;
+                if pending {
+                    sub = format!(
+                        "Active permissions are still {}; restart to apply.",
+                        r.active
+                    );
+                }
+                RowSpec {
+                    glyph: "\u{25c9}",
+                    title: if you {
+                        format!("{} (you)", r.name)
+                    } else {
+                        r.name.clone()
+                    },
+                    sub,
+                    right: r.effective.label().to_string(),
+                    mark: you,
+                    warn: pending,
+                }
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter or click: change the security mode   \u{00b7}   r: refresh",
+            "No accounts are managed by Resilience on this system.",
+            "Changing a mode needs an administrator's password.".into(),
+            p,
+        )
+    }
+
+    fn media_view<'a>(
+        &self,
+        volumes: &[resilience_core::media::Volume],
+        error: Option<&str>,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        if let Some(e) = error {
+            return centered_note(&format!(
+                "The list of USB sticks could not be read: {e}. Press r to try again."
+            ));
+        }
+        let rows = volumes
+            .iter()
+            .map(|v| {
+                let state = if !v.usable() {
+                    "cannot be used".to_string()
+                } else if let Some(m) = &v.mountpoint {
+                    match v.available {
+                        Some(a) => format!(
+                            "open at {} \u{00b7} {} free",
+                            m.display(),
+                            resilience_core::human_bytes(a)
+                        ),
+                        None => format!("open at {}", m.display()),
+                    }
+                } else {
+                    format!("{} \u{00b7} not open yet", v.fstype)
+                };
+                RowSpec {
+                    glyph: "\u{25ad}",
+                    title: v.display_name(),
+                    sub: state,
+                    right: resilience_core::human_bytes(v.size),
+                    mark: v.mountpoint.is_some(),
+                    warn: !v.usable(),
+                }
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter or click: open   \u{00b7}   e: eject   \u{00b7}   r: refresh",
+            "No USB stick or memory card found. Plug one in, wait a few seconds, then press r.",
+            "Eject (e) a stick before pulling it out.".into(),
+            p,
+        )
+    }
+
+    fn generations_view<'a>(
+        &self,
+        gens: &[resilience_core::recovery::Generation],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let rows = gens
+            .iter()
+            .map(|g| {
+                let state = match (g.booted, g.running, g.default) {
+                    (true, _, true) => "running, starts by default",
+                    (true, _, false) => "running, not the default",
+                    (false, true, _) => "active, not restarted",
+                    (false, false, true) => "default at next start",
+                    (false, false, false) => "in the boot menu",
+                };
+                RowSpec {
+                    glyph: "\u{25f7}",
+                    title: format!(
+                        "Generation {} \u{00b7} {}",
+                        g.number,
+                        g.created
+                            .map(resilience_shell::fmt::date_time)
+                            .unwrap_or_else(|| "date unknown".into())
+                    ),
+                    sub: format!(
+                        "{} \u{00b7} version {} \u{00b7} kernel {}",
+                        state,
+                        g.nixos_version.as_deref().unwrap_or("?"),
+                        g.kernel.as_deref().unwrap_or("?")
+                    ),
+                    right: if g.default {
+                        "default".into()
+                    } else {
+                        String::new()
+                    },
+                    mark: g.default,
+                    warn: false,
+                }
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter or click: start this one at every boot   \u{00b7}   r: refresh",
+            "No generations are recorded on this machine. This is normal on the live system, \
+             which always starts the same way.",
+            "Generations hold system software and settings only, never your personal files. \
+             To try one once, choose it in the boot menu while the computer starts."
+                .into(),
+            p,
+        )
+    }
+
     fn wifi_view<'a>(
         &self,
         overview: Option<&'a resilience_core::wifi::Overview>,
@@ -1263,6 +1523,19 @@ fn grid<'a>(tiles: Vec<Element<'a, Message>>, cols: usize) -> Element<'a, Messag
     scrollable(container(rows).padding([8, 28]))
         .height(Fill)
         .into()
+}
+
+/// One row of [`Gui::rows_view`].
+#[derive(Default)]
+struct RowSpec {
+    glyph: &'static str,
+    title: String,
+    sub: String,
+    right: String,
+    /// The right-hand text in the accent colour.
+    mark: bool,
+    /// The second line in the warning colour.
+    warn: bool,
 }
 
 /// Four rising bars, lit by signal strength (0-100).
