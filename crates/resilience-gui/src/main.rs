@@ -241,6 +241,10 @@ impl Gui {
                         | View::Notes { .. }
                         | View::Updates { .. }
                         | View::Backups { .. }
+                        | View::Community { .. }
+                        | View::PeerMenu { .. }
+                        | View::ChooseMode { .. }
+                        | View::Choices { .. }
                 ))
     }
 
@@ -358,6 +362,15 @@ impl Gui {
                 View::Notes { notes, .. } => self.notes_view(notes, &p),
                 View::Updates { rows, error, .. } => self.updates_view(rows, error.as_deref(), &p),
                 View::Backups { files, .. } => self.backups_view(files, &p),
+                View::Community { rows, .. } => self.community_view(rows, &p),
+                View::PeerMenu {
+                    name,
+                    peer,
+                    actions,
+                    ..
+                } => self.peer_menu_view(name, peer, actions, &p),
+                View::ChooseMode { row, .. } => self.choose_mode_view(row, &p),
+                View::Choices { items, .. } => self.choices_view(items, &p),
                 View::Wifi {
                     overview, error, ..
                 } => self.wifi_view(overview.as_ref(), error.as_deref(), &p),
@@ -436,6 +449,10 @@ impl Gui {
             View::Users { .. } => "Users & security modes".into(),
             View::Generations { .. } => "System generations".into(),
             View::Notes { .. } => "Notes".into(),
+            View::Community { .. } => "Community network".into(),
+            View::PeerMenu { name, .. } => format!("\"{}\"?", resilience_core::printable(name)),
+            View::ChooseMode { row, .. } => format!("New security mode for {}", row.name),
+            View::Choices { title, .. } => sentence_case(title),
             View::Updates { .. } => "Update from a USB stick".into(),
             View::Backups { volume, .. } => format!("Backups on {}", volume.display_name()),
             View::Media { purpose, .. } => match purpose {
@@ -1511,6 +1528,187 @@ impl Gui {
             "Enter or click: back up / restore   \u{00b7}   c: check   \u{00b7}   e: eject",
             "",
             "A restore never overwrites your files: it goes into a new folder in Restored.".into(),
+            p,
+        )
+    }
+
+    fn community_view<'a>(
+        &self,
+        rows: &[resilience_shell::app::CommunityRow],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        use resilience_shell::app::CommunityRow as R;
+        let now = resilience_shell::app::chat_now();
+        let on = |title: String, sub: &str| RowSpec {
+            glyph: "\u{25cf}",
+            title,
+            sub: sub.into(),
+            right: "on".into(),
+            mark: true,
+            warn: false,
+        };
+        let heard = rows
+            .iter()
+            .filter(|r| matches!(r, R::Machine { .. }))
+            .count();
+        let rows = rows
+            .iter()
+            .map(|r| match r {
+                R::Sharing(s) => on(
+                    format!(
+                        "Sharing {} on {} as \"{}\"",
+                        s.services.join(", "),
+                        s.interface,
+                        s.name
+                    ),
+                    "Enter or click: stop sharing",
+                ),
+                R::Share => RowSpec {
+                    glyph: "\u{21c4}",
+                    title: "Share this computer's resources".into(),
+                    sub:
+                        "Packs, library, a folder or pages, on one network (administrator password)"
+                            .into(),
+                    ..RowSpec::default()
+                },
+                R::Address => RowSpec {
+                    glyph: "\u{2328}",
+                    title: "Type the address of a computer".into(),
+                    sub: "When someone gives you their computer's address".into(),
+                    ..RowSpec::default()
+                },
+                R::Hotspot { on: Some(what) } => {
+                    on(format!("Hotspot {what}"), "Enter or click: turn it off")
+                }
+                R::Hotspot { on: None } => RowSpec {
+                    glyph: "\u{25ce}",
+                    title: "Create a network: hotspot".into(),
+                    sub: "This computer becomes a Wi-Fi network others can join".into(),
+                    ..RowSpec::default()
+                },
+                R::Mesh { on: true } => on("Mesh network".into(), "Enter or click: turn it off"),
+                R::Mesh { on: false } => RowSpec {
+                    glyph: "\u{2b21}",
+                    title: "Create a network: mesh".into(),
+                    sub: "Wi-Fi between computers, without a router".into(),
+                    ..RowSpec::default()
+                },
+                R::Machine { heard, peer } => {
+                    let what: Vec<&str> = heard.services.iter().map(|s| s.id()).collect();
+                    RowSpec {
+                        glyph: "\u{25a2}",
+                        title: format!("\"{}\"?", resilience_core::printable(&heard.name)),
+                        sub: format!(
+                            "shares {} \u{00b7} {}",
+                            what.join(", "),
+                            match peer {
+                                Some(p) => p.display(),
+                                None => "not reachable from here".into(),
+                            }
+                        ),
+                        right: format!("heard {}", messages::ago(heard.heard, now)),
+                        warn: peer.is_none(),
+                        ..RowSpec::default()
+                    }
+                }
+            })
+            .collect();
+        let footer = if heard == 0 {
+            "No computer sharing has been heard yet. They appear here a little after joining \
+             the same network (Wi-Fi, cable or mesh)."
+                .to_string()
+        } else {
+            "A name in quotes with ? is only what that computer says about itself. Packs you \
+             get are checked; pages and files are as trustworthy as whoever runs it."
+                .to_string()
+        };
+        self.rows_view(
+            rows,
+            "Enter or click: open   \u{00b7}   a: type an address   \u{00b7}   r: refresh",
+            "",
+            footer,
+            p,
+        )
+    }
+
+    fn peer_menu_view<'a>(
+        &self,
+        name: &str,
+        peer: &resilience_core::share::Peer,
+        actions: &[resilience_shell::app::PeerAction],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let rows = actions
+            .iter()
+            .map(|a| RowSpec {
+                glyph: "\u{203a}",
+                title: a.name().to_string(),
+                ..RowSpec::default()
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter or click: open",
+            "",
+            format!(
+                "{} at {}. Pages open in the text browser (q comes back). Anyone on this network can read them too.",
+                resilience_core::printable(name),
+                peer.display()
+            ),
+            p,
+        )
+    }
+
+    fn choose_mode_view<'a>(
+        &self,
+        row: &resilience_core::admin::AccountRow,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let rows = resilience_shell::app::MODES
+            .iter()
+            .map(|m| RowSpec {
+                glyph: "\u{25c9}",
+                title: m.label().to_string(),
+                sub: m.description().to_string(),
+                right: if *m == row.effective {
+                    "current".into()
+                } else {
+                    String::new()
+                },
+                mark: *m == row.effective,
+                warn: false,
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter or click: continue   \u{00b7}   Esc: cancel",
+            "",
+            "Next you see what changes and confirm; nothing changes yet.".into(),
+            p,
+        )
+    }
+
+    fn choices_view<'a>(
+        &self,
+        items: &[resilience_shell::app::Choice],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let rows = items
+            .iter()
+            .enumerate()
+            .map(|(i, c)| RowSpec {
+                glyph: "\u{203a}",
+                title: c.name().to_string(),
+                sub: c.description().to_string(),
+                right: format!("{}", i + 1),
+                ..RowSpec::default()
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter, click or its number: open",
+            "",
+            String::new(),
             p,
         )
     }

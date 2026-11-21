@@ -1388,6 +1388,10 @@ impl App {
             | View::Notes { list, .. }
             | View::Updates { list, .. }
             | View::Backups { list, .. }
+            | View::Community { list, .. }
+            | View::PeerMenu { list, .. }
+            | View::ChooseMode { list, .. }
+            | View::Choices { list, .. }
             | View::Settings { list } => Some(list),
             _ => None,
         }
@@ -1413,6 +1417,10 @@ impl App {
             | View::Notes { list, .. }
             | View::Updates { list, .. }
             | View::Backups { list, .. }
+            | View::Community { list, .. }
+            | View::PeerMenu { list, .. }
+            | View::ChooseMode { list, .. }
+            | View::Choices { list, .. }
             | View::Settings { list } => list.selected(),
             _ => None,
         }
