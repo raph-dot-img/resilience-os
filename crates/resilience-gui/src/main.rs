@@ -239,6 +239,8 @@ impl Gui {
                         | View::Settings { .. }
                         | View::Handbook { .. }
                         | View::Pager { .. }
+                        | View::Status { .. }
+                        | View::Network { .. }
                         | View::Help { .. }
                         | View::Files { .. }
                         | View::Library { .. }
@@ -402,6 +404,12 @@ impl Gui {
                 View::Settings { .. } => self.settings_view(&p),
                 View::Handbook { pages, error, .. } => self.handbook_view(pages, error.as_deref()),
                 View::Pager { text, scroll, .. } => self.pager_view(text.clone(), *scroll, &p),
+                View::Status { scroll } => {
+                    self.pager_view(resilience_tui::ui::status_text(&self.app), *scroll, &p)
+                }
+                View::Network { scroll } => {
+                    self.pager_view(resilience_tui::ui::network_text(&self.app), *scroll, &p)
+                }
                 View::Files {
                     idx, query, pick, ..
                 } => self.files_view(idx, query, pick.is_some(), &p),
@@ -505,6 +513,8 @@ impl Gui {
             View::Handbook { .. } => "Handbook".into(),
             View::Pager { title, .. } => sentence_case(title),
             View::Help { .. } => "Help".into(),
+            View::Status { .. } => "System status".into(),
+            View::Network { .. } => "Network status & diagnostics".into(),
             View::Files { pick: Some(pk), .. } => sentence_case(pk.title()),
             View::Files { .. } => "Find files".into(),
             View::Library { kind, .. } if *kind == resilience_core::packs::PackKind::Map => {

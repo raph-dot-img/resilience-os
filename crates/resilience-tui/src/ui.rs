@@ -773,6 +773,28 @@ fn heading(t: &Theme, s: &str) -> Line<'static> {
     Line::from(Span::styled(format!("== {s} =="), t.accent))
 }
 
+/// The lines of a scroll page as plain text (the GUI draws them itself).
+pub fn plain(lines: Vec<Line<'static>>) -> String {
+    lines
+        .iter()
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn status_text(app: &App) -> String {
+    plain(status_lines(app))
+}
+
+pub fn network_text(app: &App) -> String {
+    plain(network_lines(app))
+}
+
 fn status_lines(app: &App) -> Vec<Line<'static>> {
     let t = &Theme::new(app.theme);
     let s = &app.snapshot;
