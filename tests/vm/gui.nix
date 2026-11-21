@@ -97,6 +97,20 @@
         machine.send_key("esc")
         machine.wait_for_text("Hello", timeout=90)
 
+    with subtest("native local messages"):
+        machine.wait_until_succeeds("test -e /run/resilience-reticulum/client/config", timeout=120)
+        machine.send_chars("/local mess")
+        machine.wait_for_text("Local messages", timeout=90)
+        machine.send_key("ret")
+        machine.wait_for_text("Messaging is on", timeout=120)
+        machine.screenshot("gui-messages")
+        machine.send_key("p")
+        machine.wait_for_text("People nearby", timeout=90)
+        machine.send_key("esc")
+        machine.send_key("esc")
+        machine.send_key("esc")
+        machine.wait_for_text("Hello", timeout=90)
+
     with subtest("search, then a program opens in foot and comes back"):
         # Nano needs Stable; the unit converter is offered to Ultra-Stable.
         machine.send_chars("/unit conv")

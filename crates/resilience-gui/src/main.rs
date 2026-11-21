@@ -26,6 +26,7 @@ use iced::widget::{Space, button, column, container, row, scrollable, text, text
 use iced::{Element, Fill, Length, Subscription, Task, keyboard, window};
 use resilience_core::catalog::Category;
 use resilience_core::config::ThemeName;
+use resilience_core::messages;
 use resilience_shell::app::{App, Effect, Entry, SearchHit, Startup, View, category_description};
 use resilience_shell::input::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -196,6 +197,9 @@ impl Gui {
                         | View::Help { .. }
                         | View::Files { .. }
                         | View::Library { .. }
+                        | View::Chats { .. }
+                        | View::Nearby { .. }
+                        | View::Chat { .. }
                 ))
     }
 
@@ -237,7 +241,16 @@ impl Gui {
                 if self.running.is_some() {
                     return Task::none();
                 }
-                self.app.choose_row(i)
+                // In a conversation Enter writes: a click only selects the
+                // message (for o open, s save, c cancel).
+                if self.app.modal.is_none() && matches!(self.app.view(), View::Chat { .. }) {
+                    if let Some(l) = self.app.list_mut() {
+                        l.select(Some(i));
+                    }
+                    Effect::None
+                } else {
+                    self.app.choose_row(i)
+                }
             }
             Message::Back => self
                 .app
@@ -292,6 +305,9 @@ impl Gui {
                     idx, query, pick, ..
                 } => self.files_view(idx, query, pick.is_some(), &p),
                 View::Library { kind, items, .. } => self.library_view(*kind, items, &p),
+                View::Chats { rows, status, .. } => self.chats_view(rows, status, &p),
+                View::Nearby { rows, .. } => self.nearby_view(rows, &p),
+                View::Chat { records, .. } => self.chat_view(records, &p),
                 View::Help { topic, scroll } => {
                     self.pager_view(help_text(*topic, self.app.mode()), *scroll, &p)
                 }
@@ -361,6 +377,9 @@ impl Gui {
                 "Maps on this computer & USB sticks".into()
             }
             View::Library { .. } => "Offline library".into(),
+            View::Chats { .. } => "Local messages".into(),
+            View::Nearby { .. } => "People nearby".into(),
+            View::Chat { peer, name, .. } => name.display(peer),
             _ => String::new(),
         }
     }
@@ -784,6 +803,275 @@ impl Gui {
         .into()
     }
 
+    fn chats_view<'a>(
+        &self,
+        rows: &'a [resilience_shell::app::ChatRow],
+        status: &'a messages::Status,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let p = *p;
+        let now = resilience_shell::app::chat_now();
+        let sel = self.app.selected_row();
+        let (state, ok) = match status {
+            messages::Status::Running { address, store } => (
+                format!(
+                    "Messaging is on. My address: {} (m shows all of it). {}",
+                    messages::short_address(address),
+                    if *store {
+                        "People who are away can be written to: a store keeps the message."
+                    } else {
+                        "No message store: both computers must be on at the same time."
+                    }
+                ),
+                true,
+            ),
+            messages::Status::Stopped { .. } => (
+                "Messaging is not running for your account: nothing is sent or received. \
+                 Log out and in again."
+                    .to_string(),
+                false,
+            ),
+        };
+        let banner = container(
+            row![
+                text(if ok { "\u{25cf}" } else { "\u{25b2}" })
+                    .size(16)
+                    .color(if ok { p.accent } else { p.warn }),
+                text(state).size(14)
+            ]
+            .spacing(10)
+            .align_y(iced::Center),
+        )
+        .padding([12, 18])
+        .width(Fill)
+        .style(move |_| style::card(&p));
+        let hint = "Enter or click: open   \u{00b7}   n: write to an address   \u{00b7}   p: people nearby   \u{00b7}   m: my address";
+        let list: Element<'a, Message> = if rows.is_empty() {
+            centered_note(
+                "No messages yet. Press p to see the people on your local network, \
+                 or n to write to an address someone gave you.",
+            )
+        } else {
+            let items: Vec<Element<'a, Message>> = rows
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let c = &r.conv;
+                    let who = if c.last_direction == messages::Direction::Out {
+                        "You: "
+                    } else {
+                        ""
+                    };
+                    let flag = if c.failed > 0 {
+                        text("failed").size(13).color(p.error)
+                    } else if c.pending > 0 {
+                        text("waiting").size(13).style(style::dim_text)
+                    } else {
+                        text("")
+                    };
+                    let preview = format!("{who}{}", messages::clean_line(&c.last_text, 120));
+                    button(
+                        row![
+                            text(initial(&r.name.display(&c.peer)))
+                                .size(18)
+                                .font(style::UI_FONT_BOLD)
+                                .color(p.accent)
+                                .width(Length::Fixed(32.0)),
+                            column![
+                                text(r.name.display(&c.peer))
+                                    .size(16)
+                                    .font(style::UI_FONT_BOLD),
+                                text(preview).size(14).style(style::dim_text)
+                            ]
+                            .width(Fill),
+                            flag,
+                            text(messages::ago(c.last_time, now))
+                                .size(13)
+                                .style(style::dim_text)
+                                .width(Length::Fixed(110.0)),
+                        ]
+                        .spacing(12)
+                        .align_y(iced::Center),
+                    )
+                    .on_press(Message::Choose(i))
+                    .width(Fill)
+                    .padding([12, 18])
+                    .style(move |t, st| style::row_button(t, st, sel == Some(i)))
+                    .into()
+                })
+                .collect();
+            scrollable(column(items).spacing(4)).height(Fill).into()
+        };
+        let claimed = sel
+            .and_then(|i| rows.get(i))
+            .is_some_and(|r| matches!(r.name, messages::Name::Claimed(_)));
+        let mut c = column![
+            banner,
+            row![
+                Space::new().width(Fill),
+                text(hint).size(13).style(style::dim_text)
+            ],
+            list
+        ]
+        .spacing(10)
+        .padding([8, 28]);
+        if claimed {
+            c = c.push(
+                text("A name in quotes with ? is what that address says about itself: anyone can claim any name.")
+                    .size(13)
+                    .style(style::dim_text),
+            );
+        }
+        c.into()
+    }
+
+    fn nearby_view<'a>(
+        &self,
+        rows: &'a [resilience_shell::app::NearbyRow],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let p = *p;
+        let now = resilience_shell::app::chat_now();
+        let sel = self.app.selected_row();
+        let hint = "Enter or click: write   \u{00b7}   a: name this person   \u{00b7}   i: address   \u{00b7}   r: refresh";
+        let list: Element<'a, Message> = if rows.is_empty() {
+            centered_note(
+                "Nobody has been heard on the local network yet. Other computers appear \
+                 here a little after they join the same network.",
+            )
+        } else {
+            let items: Vec<Element<'a, Message>> = rows
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    button(
+                        row![
+                            text(initial(&r.name.display(&r.peer.address)))
+                                .size(18)
+                                .font(style::UI_FONT_BOLD)
+                                .color(p.accent)
+                                .width(Length::Fixed(32.0)),
+                            column![
+                                text(r.name.display(&r.peer.address))
+                                    .size(16)
+                                    .font(style::UI_FONT_BOLD),
+                                text(messages::format_address(&r.peer.address))
+                                    .size(13)
+                                    .font(style::MONO_FONT)
+                                    .style(style::dim_text)
+                            ]
+                            .width(Fill),
+                            text(format!("heard {}", messages::ago(r.peer.heard, now)))
+                                .size(13)
+                                .style(style::dim_text),
+                        ]
+                        .spacing(12)
+                        .align_y(iced::Center),
+                    )
+                    .on_press(Message::Choose(i))
+                    .width(Fill)
+                    .padding([12, 18])
+                    .style(move |t, st| style::row_button(t, st, sel == Some(i)))
+                    .into()
+                })
+                .collect();
+            scrollable(column(items).spacing(4)).height(Fill).into()
+        };
+        column![
+            row![
+                Space::new().width(Fill),
+                text(hint).size(13).style(style::dim_text)
+            ],
+            list,
+            text(
+                "A name in quotes with ? is only what that address says about itself. Compare the \
+                  address with the person (in person or by voice), then press a to name it."
+            )
+            .size(13)
+            .style(style::dim_text),
+        ]
+        .spacing(10)
+        .padding([8, 28])
+        .into()
+    }
+
+    fn chat_view<'a>(&self, records: &'a [messages::Record], p: &Palette) -> Element<'a, Message> {
+        let p = *p;
+        let now = resilience_shell::app::chat_now();
+        let sel = self.app.selected_row();
+        let hint = "w: write   \u{00b7}   f: send a file   \u{00b7}   o: open   \u{00b7}   s: save   \u{00b7}   c: cancel   \u{00b7}   a: name   \u{00b7}   i: address";
+        let list: Element<'a, Message> = if records.is_empty() {
+            centered_note("No messages with this person yet. Press w to write one.")
+        } else {
+            let items: Vec<Element<'a, Message>> = records
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let mine = r.direction == messages::Direction::Out;
+                    let color = match (r.direction, r.state) {
+                        (messages::Direction::In, _) if r.verified => p.accent,
+                        (messages::Direction::In, _) => p.warn,
+                        (_, messages::State::Failed) => p.error,
+                        _ => p.dim,
+                    };
+                    let mut head =
+                        format!("{} \u{00b7} {}", r.marker(), messages::ago(r.created, now));
+                    if !r.detail.is_empty() && r.state != messages::State::Delivered {
+                        head.push_str(&format!(
+                            " \u{00b7} {}",
+                            messages::clean_line(&r.detail, 80)
+                        ));
+                    }
+                    let mut b = column![
+                        text(messages::clean_text(&r.text, 200).join("\n")).size(15),
+                        text(head).size(12).color(color),
+                    ]
+                    .spacing(4);
+                    if let Some(file) = &r.file {
+                        let mut l = format!(
+                            "File: {} ({})",
+                            file.shown(),
+                            messages::size_text(file.size)
+                        );
+                        if !mine {
+                            l.push_str(if file.data.is_some() {
+                                "  \u{00b7}  o open, s save"
+                            } else {
+                                "  \u{00b7}  not kept"
+                            });
+                        }
+                        b = b.push(text(l).size(13).color(p.accent));
+                    }
+                    let bubble = button(b)
+                        .on_press(Message::Choose(i))
+                        .padding([10, 16])
+                        .width(Length::FillPortion(3))
+                        .style(move |t, st| style::row_button(t, st, sel == Some(i)));
+                    let r: Element<'a, Message> = if mine {
+                        row![Space::new().width(Length::FillPortion(1)), bubble].into()
+                    } else {
+                        row![bubble, Space::new().width(Length::FillPortion(1))].into()
+                    };
+                    r
+                })
+                .collect();
+            scrollable(column(items).spacing(8))
+                .anchor_bottom()
+                .height(Fill)
+                .into()
+        };
+        column![
+            row![
+                Space::new().width(Fill),
+                text(hint).size(13).style(style::dim_text)
+            ],
+            list
+        ]
+        .spacing(10)
+        .padding([8, 28])
+        .into()
+    }
+
     fn entry_description(&self, e: Entry) -> String {
         match e {
             Entry::App(i) => self.app.catalog.apps[i].description.clone(),
@@ -871,6 +1159,14 @@ fn grid<'a>(tiles: Vec<Element<'a, Message>>, cols: usize) -> Element<'a, Messag
     scrollable(container(rows).padding([8, 28]))
         .height(Fill)
         .into()
+}
+
+/// The first letter of a name, for its round mark in the lists.
+fn initial(name: &str) -> String {
+    name.chars()
+        .find(|c| c.is_alphanumeric())
+        .map(|c| c.to_uppercase().collect())
+        .unwrap_or_else(|| "?".into())
 }
 
 fn centered_note<'a>(s: &str) -> Element<'a, Message> {

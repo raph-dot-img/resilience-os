@@ -1358,6 +1358,9 @@ impl App {
             | View::Handbook { list, .. }
             | View::Files { list, .. }
             | View::Library { list, .. }
+            | View::Chats { list, .. }
+            | View::Nearby { list, .. }
+            | View::Chat { list, .. }
             | View::Settings { list } => Some(list),
             _ => None,
         }
@@ -1372,6 +1375,9 @@ impl App {
             | View::Handbook { list, .. }
             | View::Files { list, .. }
             | View::Library { list, .. }
+            | View::Chats { list, .. }
+            | View::Nearby { list, .. }
+            | View::Chat { list, .. }
             | View::Settings { list } => list.selected(),
             _ => None,
         }
