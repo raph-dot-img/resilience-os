@@ -122,6 +122,11 @@ which corrupts text next to box-drawing characters with our console font.
 | — | Screenshots looked at (home, handbook panel, search, program in foot) | PASS |
 | — | Native handbook: list, then a guide in the reading view (OCR), Esc back home | PASS |
 | — | Size: installed-standard-gui-uefi-plain closure 2485.7 MiB vs installed-standard-uefi-plain 2427.1 MiB: +58.6 MiB (target 60; was +79.7 before the fonts were copied instead of linked) | PASS |
+| — | Native offline library and Find files (`/view files`, typed query, OCR "field-notes") | PASS (2026-11-21) |
+| — | Native Local messages: "Messaging is on", `p` opens People nearby, Esc back home | PASS (2026-11-21) |
+| — | Native dialog: `q` asks "Log out", Enter keeps the default Cancel, the GUI stays up | PASS (2026-11-21, run 8 at `b29e2ae`: 9/9 subtests) |
+| — | Native screens for packs, keys, pack sets, nearby computer packs/files, sharing setup, status/network pages: drawn in the development preview (`scripts/gui-preview.sh`; packs, keys, Encrypt for and network pages looked at) | PASS (preview only, not in the VM) |
+| — | Full run at `7ceaeed` (2026-11-22): all 27 checks + live-standard, live-standard-gui, live-minimal toplevels, one eval per derivation | PASS |
 | — | Real hardware, touchpad/mouse clicks, ISO boot | NOT TESTED |
 
 ### VM: `vm-modes` — isolated VLAN, three accounts
