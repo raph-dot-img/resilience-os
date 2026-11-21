@@ -290,6 +290,15 @@ decided by the owner on 2026-11-20: release 0.7.0, after maps (0.6.0).
   the service unprivileged and stopped after use; a model file with a
   wrong hash refused.
 
+## Phase 5b — Build your own map ⬜ (requested 2026-11-21; release 0.7.1, owner 2026-11-21)
+Catalog map packs are rebuilt once a year (release checklist); users update or add regions themselves:
+- Maps → "Make or update a map": region list shipped offline (Geofabrik index, size + RAM needed),
+  disk/RAM check before starting, `.osm.pbf` download on request only (HTTPS, Geofabrik checksum,
+  resume) or from a USB stick, build in the foreground as the user under a memory limit
+  (osmium + tippecanoe + resilience-mapmaker, no Nix), result in the user's maps, data date shown.
+- Optional sea fill (OSM water polygons ~800 MB + GDAL); without it coastal maps keep their coastline.
+- Standard edition only (+30-50 MB). ADR 0016 amendment, threat model entry, VM test on the test region.
+
 ## Phase 13 — Media and translation ⬜ (requested 2026-11-21; release 0.9.0, owner 2026-11-21)
 All offline, the same screens in the TUI and the GUI (resilience-shell), ADR first.
 - Music player: ~/Music, USB sticks, later music packs (public domain / CC); playback goes on

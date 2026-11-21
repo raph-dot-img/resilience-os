@@ -772,7 +772,9 @@ program, found 2026-11-20, is fixed on `feat/maps-search`) for 0.6.0
 0.7.0 (owner, 2026-11-21): GUI edition (ADR 0026 accepted, branch `feat/gui`). Release
 0.8.0: Phase 11, offline assistant (local model via Ollama or
 llama.cpp, models as hash-pinned packs, answers grounded in the
-libraries and handbook with sources); ADR first; not started. Release 0.9.0
+libraries and handbook with sources); ADR first; not started. Release 0.7.1
+(owner, 2026-11-21): build your own map (Maps → Make or update a map, ROADMAP Phase 5b);
+catalog map packs rebuilt once a year. Release 0.9.0
 (owner, 2026-11-21): Phase 13, music player, audio recorder, webcam video recorder,
 offline translation with downloadable languages; not started.
 
