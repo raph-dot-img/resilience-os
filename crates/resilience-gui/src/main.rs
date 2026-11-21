@@ -107,7 +107,13 @@ struct Gui {
     running: Option<String>,
     /// The terminal renderer's output for screens without a native view.
     screen: textpanel::Screen,
+    /// Rows in the list drawn last (see [`LIST`]): lets the keyboard
+    /// selection scroll into view.
+    rows_shown: std::cell::Cell<usize>,
 }
+
+/// The id of the scrollable row list on native list screens.
+const LIST: &str = "rows";
 
 impl Gui {
     fn new() -> (Gui, Task<Message>) {
@@ -118,6 +124,7 @@ impl Gui {
             size: iced::Size::new(1280.0, 800.0),
             running: None,
             screen: textpanel::Screen::default(),
+            rows_shown: std::cell::Cell::new(0),
         };
         (gui, Task::none())
     }
@@ -139,7 +146,33 @@ impl Gui {
         if dbg {
             eprintln!("msg {m:?} before: depth {}", self.app.stack.len());
         }
-        let task = self.step(m);
+        let key = matches!(m, Message::Key(_));
+        let (depth, before) = (self.app.stack.len(), self.app.selected_row());
+        let mut task = self.step(m);
+        // Arrow keys move the selection: keep it on screen. Snapping to the
+        // same fraction of the list always shows that row.
+        let after = self.app.selected_row();
+        if key
+            && self.app.stack.len() == depth
+            && after != before
+            && let Some(i) = after
+        {
+            {
+                let n = self.rows_shown.get().max(2);
+                let mut y = (i as f32 / (n - 1) as f32).clamp(0.0, 1.0);
+                // A conversation is anchored at its newest (last) message.
+                if matches!(self.app.view(), View::Chat { .. }) {
+                    y = 1.0 - y;
+                }
+                task = Task::batch([
+                    task,
+                    iced::widget::operation::snap_to(
+                        iced::widget::Id::new(LIST),
+                        iced::widget::scrollable::RelativeOffset { x: 0.0, y },
+                    ),
+                ]);
+            }
+        }
         if dbg {
             eprintln!("  after: depth {}", self.app.stack.len());
         }
@@ -205,6 +238,9 @@ impl Gui {
                         | View::Users { .. }
                         | View::Media { .. }
                         | View::Generations { .. }
+                        | View::Notes { .. }
+                        | View::Updates { .. }
+                        | View::Backups { .. }
                 ))
     }
 
@@ -319,6 +355,9 @@ impl Gui {
                     self.media_view(volumes, error.as_deref(), &p)
                 }
                 View::Generations { gens, .. } => self.generations_view(gens, &p),
+                View::Notes { notes, .. } => self.notes_view(notes, &p),
+                View::Updates { rows, error, .. } => self.updates_view(rows, error.as_deref(), &p),
+                View::Backups { files, .. } => self.backups_view(files, &p),
                 View::Wifi {
                     overview, error, ..
                 } => self.wifi_view(overview.as_ref(), error.as_deref(), &p),
@@ -396,6 +435,9 @@ impl Gui {
             View::Recovery { .. } => "Recovery & diagnostics".into(),
             View::Users { .. } => "Users & security modes".into(),
             View::Generations { .. } => "System generations".into(),
+            View::Notes { .. } => "Notes".into(),
+            View::Updates { .. } => "Update from a USB stick".into(),
+            View::Backups { volume, .. } => format!("Backups on {}", volume.display_name()),
             View::Media { purpose, .. } => match purpose {
                 resilience_shell::app::MediaPurpose::InstallPacks => "Copy packs from a USB stick",
                 resilience_shell::app::MediaPurpose::ReadPacks => "Read packs on a USB stick",
@@ -473,7 +515,9 @@ impl Gui {
             })
             .collect();
         let _ = p;
+        self.rows_shown.set(rows.len());
         scrollable(column(rows).spacing(6).padding([8, 28]))
+            .id(iced::widget::Id::new(LIST))
             .height(Fill)
             .into()
     }
@@ -585,11 +629,13 @@ impl Gui {
                     .into()
             })
             .collect();
+        self.rows_shown.set(rows.len());
         scrollable(
             container(column(rows).spacing(6).max_width(760.0))
                 .center_x(Fill)
                 .padding([8, 28]),
         )
+        .id(iced::widget::Id::new(LIST))
         .height(Fill)
         .into()
     }
@@ -768,7 +814,13 @@ impl Gui {
                 Space::new().width(Fill),
                 text(hint).size(13).style(style::dim_text)
             ],
-            scrollable(column(rows).spacing(4)).height(Fill),
+            {
+                self.rows_shown.set(rows.len());
+                scrollable(column(rows).spacing(4))
+                    .id(iced::widget::Id::new(LIST))
+                    .spacing(8)
+                    .height(Fill)
+            },
         ]
         .spacing(10)
         .padding([8, 28])
@@ -927,7 +979,12 @@ impl Gui {
                     .into()
                 })
                 .collect();
-            scrollable(column(items).spacing(4)).height(Fill).into()
+            self.rows_shown.set(items.len());
+            scrollable(column(items).spacing(4))
+                .id(iced::widget::Id::new(LIST))
+                .spacing(8)
+                .height(Fill)
+                .into()
         };
         let claimed = sel
             .and_then(|i| rows.get(i))
@@ -1002,7 +1059,12 @@ impl Gui {
                     .into()
                 })
                 .collect();
-            scrollable(column(items).spacing(4)).height(Fill).into()
+            self.rows_shown.set(items.len());
+            scrollable(column(items).spacing(4))
+                .id(iced::widget::Id::new(LIST))
+                .spacing(8)
+                .height(Fill)
+                .into()
         };
         column![
             row![
@@ -1082,7 +1144,9 @@ impl Gui {
                     r
                 })
                 .collect();
+            self.rows_shown.set(items.len());
             scrollable(column(items).spacing(8))
+                .id(iced::widget::Id::new(LIST))
                 .anchor_bottom()
                 .height(Fill)
                 .into()
@@ -1146,7 +1210,12 @@ impl Gui {
                     .into()
                 })
                 .collect();
-            scrollable(column(items).spacing(4)).height(Fill).into()
+            self.rows_shown.set(items.len());
+            scrollable(column(items).spacing(4))
+                .id(iced::widget::Id::new(LIST))
+                .spacing(8)
+                .height(Fill)
+                .into()
         };
         let mut c = column![
             row![
@@ -1337,6 +1406,115 @@ impl Gui {
         )
     }
 
+    fn notes_view<'a>(
+        &self,
+        notes: &[resilience_core::notes::Note],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let rows = notes
+            .iter()
+            .map(|n| RowSpec {
+                glyph: "\u{270e}",
+                title: n.name.clone(),
+                sub: n
+                    .modified
+                    .map(resilience_shell::fmt::date_time)
+                    .unwrap_or_default(),
+                right: resilience_core::human_bytes(n.size),
+                ..RowSpec::default()
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter or click: open   \u{00b7}   n: new note   \u{00b7}   r: refresh",
+            "No notes yet. Press n to write your first one.",
+            "Notes are plain text files in your Notes folder.".into(),
+            p,
+        )
+    }
+
+    fn updates_view<'a>(
+        &self,
+        rows: &[resilience_shell::app::UpdateRow],
+        error: Option<&str>,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        if let Some(e) = error {
+            return centered_note(&format!(
+                "The list of USB sticks could not be read: {e}. Press r to try again."
+            ));
+        }
+        let running = self
+            .app
+            .update_settings()
+            .map(|u| format!("This computer runs Resilience {} {}.", u.edition, u.version))
+            .unwrap_or_default();
+        let rows = rows
+            .iter()
+            .map(|r| {
+                let (state, mark, warn) = match (&r.volume.mountpoint, &r.claim) {
+                    _ if r.volume.problem.is_some() => ("cannot be used".to_string(), false, true),
+                    (None, _) => ("not open yet: Enter opens it".to_string(), false, false),
+                    (Some(_), Some(Ok(u))) => (format!("update to {}", u.version), true, false),
+                    (Some(_), Some(Err(_))) => {
+                        ("the update on it cannot be read".to_string(), false, true)
+                    }
+                    (Some(_), None) => ("no update on this stick".to_string(), false, false),
+                };
+                RowSpec {
+                    glyph: "\u{21e7}",
+                    title: r.volume.display_name(),
+                    sub: state,
+                    right: resilience_core::human_bytes(r.volume.size),
+                    mark,
+                    warn,
+                }
+            })
+            .collect();
+        self.rows_view(
+            rows,
+            "Enter or click: open / install   \u{00b7}   c: check   \u{00b7}   r: refresh",
+            "No USB stick or memory card found. Plug in the stick with the update, wait a \
+             few seconds, then press r.",
+            running,
+            p,
+        )
+    }
+
+    fn backups_view<'a>(
+        &self,
+        files: &[resilience_core::backup::BackupFile],
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        let mut rows = vec![RowSpec {
+            glyph: "+",
+            title: "Make a new backup of my files".into(),
+            sub: "Your whole home folder in one encrypted file on this stick. You choose its \
+                  passphrase."
+                .into(),
+            ..RowSpec::default()
+        }];
+        rows.extend(files.iter().map(|b| RowSpec {
+            glyph: "\u{25a3}",
+            title: resilience_core::backup::human_stamp(&b.stamp),
+            sub: if b.has_checksum {
+                "Enter restores it into a new folder; c checks it first".into()
+            } else {
+                "no checksum file: it cannot be checked".into()
+            },
+            right: resilience_core::human_bytes(b.size),
+            warn: !b.has_checksum,
+            ..RowSpec::default()
+        }));
+        self.rows_view(
+            rows,
+            "Enter or click: back up / restore   \u{00b7}   c: check   \u{00b7}   e: eject",
+            "",
+            "A restore never overwrites your files: it goes into a new folder in Restored.".into(),
+            p,
+        )
+    }
+
     fn wifi_view<'a>(
         &self,
         overview: Option<&'a resilience_core::wifi::Overview>,
@@ -1422,7 +1600,12 @@ impl Gui {
                 "No networks found yet. Scanning takes a few seconds; press r to look again.",
             )
         } else {
-            scrollable(column(items).spacing(4)).height(Fill).into()
+            self.rows_shown.set(items.len());
+            scrollable(column(items).spacing(4))
+                .id(iced::widget::Id::new(LIST))
+                .spacing(8)
+                .height(Fill)
+                .into()
         };
         column![
             row![Space::new().width(Fill), text(hint).size(13).style(style::dim_text)],

@@ -1385,6 +1385,9 @@ impl App {
             | View::Users { list, .. }
             | View::Media { list, .. }
             | View::Generations { list, .. }
+            | View::Notes { list, .. }
+            | View::Updates { list, .. }
+            | View::Backups { list, .. }
             | View::Settings { list } => Some(list),
             _ => None,
         }
@@ -1407,6 +1410,9 @@ impl App {
             | View::Users { list, .. }
             | View::Media { list, .. }
             | View::Generations { list, .. }
+            | View::Notes { list, .. }
+            | View::Updates { list, .. }
+            | View::Backups { list, .. }
             | View::Settings { list } => list.selected(),
             _ => None,
         }
