@@ -18,10 +18,22 @@ GETTING AROUND
   Enter                      open the highlighted tile
   F1                         help for the current screen
 
+LISTS AND CHOICES
+  Every list works the same way: click a row, or move with the arrow
+  keys and press Enter. The keys of each screen are shown at its top
+  right. In lists with ticks (resource packs, packs of a nearby
+  computer, who to encrypt for), a click or Space ticks a row.
+
+QUESTIONS AND CONFIRMATIONS
+  Questions open in a box over a dimmed screen. Cancel is always the
+  default: pressing Enter on a confirmation does nothing harmful. Press
+  y (or click the coloured button) to confirm, n or Esc to cancel.
+
 SCREENS THAT LOOK LIKE THE TEXT INTERFACE
-  Some screens are still shown in the text interface's style, inside the
-  window. They work exactly as described in the rest of this handbook: use
-  the keys shown at the bottom of that screen.
+  The licence notice, the installer and the table viewer (CSV files)
+  are still shown in the text interface's style, inside the window.
+  They work as described in the rest of this handbook: use the keys
+  shown at the bottom of the screen.
 
 PROGRAMS
   An editor, a game or a tool opens in its own window on top of
