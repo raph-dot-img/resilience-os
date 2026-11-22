@@ -6,6 +6,8 @@ Git tags: `vX.Y.Z` on the commit of each release.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-11-22 — Make your own map, BIOS+UEFI install
+
 ### Added
 - Make or update a map (Maps & navigation): any of Geofabrik's 554
   regions, downloaded when you agree (HTTPS, resumed, checksum) or an
