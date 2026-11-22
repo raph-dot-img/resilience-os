@@ -374,10 +374,9 @@ impl Builtin {
                  on one of them. Map packs are added in Resource packs."
             }
             Builtin::MakeMap => {
-                "Make a detailed map of a region yourself, or update one made earlier: \
-                 choose it in the list of regions (downloaded from Geofabrik when you \
-                 agree, with OpenStreetMap data of the day) or take an extract from a USB \
-                 stick. It is built on this computer and kept in the folder Maps."
+                "Make a detailed map of any region, or update one made earlier: \
+                 downloaded from Geofabrik when you agree, or from a USB stick. \
+                 Kept in the folder Maps."
             }
             Builtin::Chat => {
                 "Write to people nearby, without the Internet: computers on the same \

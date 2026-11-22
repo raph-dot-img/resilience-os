@@ -179,6 +179,11 @@ impl Gui {
         {
             app.paths.packs_config = p.into();
         }
+        if cfg!(debug_assertions)
+            && let Some(p) = std::env::var_os("RESILIENCE_MAPMAKER_CONFIG")
+        {
+            app.paths.mapmaker_config = p.into();
+        }
         let gui = Gui {
             app,
             size: iced::Size::new(1280.0, 800.0),
@@ -325,6 +330,7 @@ impl Gui {
                         | View::Network { .. }
                         | View::Help { .. }
                         | View::Files { .. }
+                        | View::MakeMap { .. }
                         | View::Library { .. }
                         | View::Chats { .. }
                         | View::Nearby { .. }
@@ -499,6 +505,12 @@ impl Gui {
                     idx, query, pick, ..
                 } => self.files_view(idx, query, pick.is_some(), &p),
                 View::Library { kind, items, .. } => self.library_view(*kind, items, &p),
+                View::MakeMap {
+                    regions,
+                    sticks,
+                    query,
+                    ..
+                } => self.make_map_view(regions, sticks, query, &p),
                 View::Chats { rows, status, .. } => self.chats_view(rows, status, &p),
                 View::Nearby { rows, .. } => self.nearby_view(rows, &p),
                 View::Chat { records, .. } => self.chat_view(records, &p),
@@ -571,7 +583,7 @@ impl Gui {
         }
         r = r.push(text(self.title()).size(20).font(style::UI_FONT_BOLD));
         r = r.push(Space::new().width(Fill));
-        if matches!(self.app.view(), View::Files { .. }) {
+        if matches!(self.app.view(), View::Files { .. } | View::MakeMap { .. }) {
             return container(r).padding([16, 28]).height(BAR_H).into();
         }
         let query = match self.app.view() {
@@ -605,6 +617,7 @@ impl Gui {
             View::Network { .. } => "Network status & diagnostics".into(),
             View::Files { pick: Some(pk), .. } => sentence_case(pk.title()),
             View::Files { .. } => "Find files".into(),
+            View::MakeMap { .. } => "Make or update a map".into(),
             View::Library { kind, .. } if *kind == resilience_core::packs::PackKind::Map => {
                 "Maps on this computer & USB sticks".into()
             }
@@ -1008,6 +1021,107 @@ impl Gui {
                 text(note).size(13).style(style::dim_text),
                 Space::new().width(Fill),
                 text(hint).size(13).style(style::dim_text)
+            ],
+            {
+                self.rows_shown.set(rows.len());
+                scrollable(column(rows).spacing(4))
+                    .id(iced::widget::Id::new(LIST))
+                    .spacing(8)
+                    .height(Fill)
+            },
+        ]
+        .spacing(10)
+        .padding([8, 28])
+        .into()
+    }
+
+    fn make_map_view<'a>(
+        &self,
+        regions: &[resilience_core::mapmake::Region],
+        sticks: &[resilience_shell::app::MakeRow],
+        query: &str,
+        p: &Palette,
+    ) -> Element<'a, Message> {
+        use resilience_shell::app::MakeRow;
+        let p = *p;
+        let cursor = if (self.app.tick / 2).is_multiple_of(2) {
+            "\u{258f}"
+        } else {
+            " "
+        };
+        let shown = if query.is_empty() {
+            text(format!("Type part of a region's name\u{2026}{cursor}"))
+                .size(18)
+                .style(style::dim_text)
+        } else {
+            text(format!("{query}{cursor}")).size(18)
+        };
+        let field = container(shown)
+            .padding([12, 18])
+            .width(Fill)
+            .style(move |_| style::field(&p));
+        let all = self.app.make_rows(regions, sticks, query);
+        let sel = self.app.selected_row();
+        let note = if all.is_empty() {
+            "No region matches.".to_string()
+        } else if all.len() == 1 {
+            "1 region".to_string()
+        } else {
+            format!("{} regions", all.len())
+        };
+        let start = sel.map_or(0, |s| s.saturating_sub(199));
+        let rows: Vec<Element<'a, Message>> = all
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(200)
+            .map(|(i, r)| {
+                let (main, sub) = match r {
+                    MakeRow::Stick { volume, path } => (
+                        path.file_name()
+                            .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+                        format!("Extract on the USB stick {volume}"),
+                    ),
+                    MakeRow::Region { path, made, .. } => {
+                        let (up, name) = match path.rsplit_once(" > ") {
+                            Some((u, n)) => (u.to_string(), n.to_string()),
+                            None => (String::new(), path.clone()),
+                        };
+                        let sub = match made {
+                            Some(m) => format!("{up}   \u{00b7}   made here, data of {m}"),
+                            None => up,
+                        };
+                        (name, sub)
+                    }
+                };
+                button(
+                    column![
+                        text(main).size(16),
+                        text(sub).size(13).style(style::dim_text)
+                    ]
+                    .width(Fill),
+                )
+                .on_press(Message::Choose(i))
+                .width(Fill)
+                .padding([10, 18])
+                .style(move |t, st| style::row_button(t, st, sel == Some(i)))
+                .into()
+            })
+            .collect();
+        column![
+            field,
+            text(
+                "Enter or click: Geofabrik is asked for the size (nothing is downloaded yet); \
+                 then a window says what making the map needs and asks you."
+            )
+            .size(13)
+            .style(style::dim_text),
+            row![
+                text(note).size(13).style(style::dim_text),
+                Space::new().width(Fill),
+                text("F5: look at the USB sticks again")
+                    .size(13)
+                    .style(style::dim_text)
             ],
             {
                 self.rows_shown.set(rows.len());
