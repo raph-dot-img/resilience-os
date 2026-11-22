@@ -128,6 +128,8 @@ which corrupts text next to box-drawing characters with our console font.
 | — | Native screens for packs, keys, pack sets, nearby computer packs/files, sharing setup, status/network pages: drawn in the development preview (`scripts/gui-preview.sh`; packs, keys, Encrypt for and network pages looked at) | PASS (preview only, not in the VM) |
 | — | Full run at `7ceaeed` (2026-11-22): all 27 checks + live-standard, live-standard-gui, live-minimal toplevels, one eval per derivation | PASS |
 | — | ISO `iso-gui` at `f5e46c8` (1.67 GB, still named 0.6.0 before the bump) boots in QEMU, BIOS and UEFI (`tests/iso/smoke.py`): boot menu, licence notice in the GUI, home, network, status, search, Local messages "Messaging is on"; screenshots looked at | PASS (2026-11-22) |
+| — | After the independent review's 10 fixes: vm-gui, vm-update, vm-boot-offline, security-invariants | PASS (2026-11-22) |
+| — | 0.7.0 ISOs built at `097698e` (standard-gui 1.67 GB, standard 1.65 GB, minimal 1.63 GB); standard-gui boots in QEMU, BIOS and UEFI, licence recorded, home shows the 8 sections | PASS (2026-11-22) |
 | — | Real hardware, touchpad/mouse clicks | NOT TESTED |
 
 ### VM: `vm-modes` — isolated VLAN, three accounts
