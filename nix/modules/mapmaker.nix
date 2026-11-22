@@ -16,7 +16,7 @@ let
   maps = pkgs.callPackage ../maps { resilience = config.resilience.package; };
   settings = (pkgs.formats.toml { }).generate "resilience-mapmaker.toml" {
     program = lib.getExe maps.mapmaker;
-    regions = "${../maps/regions.json}";
+    regions = "${cfg.regions}";
     export_config = "${../maps/osmium-export.json}";
     osmium = lib.getExe' pkgs.osmium-tool "osmium";
     tippecanoe = lib.getExe' pkgs.tippecanoe "tippecanoe";
@@ -26,6 +26,15 @@ let
   };
 in
 {
+  options.resilience.mapmaker.regions = lib.mkOption {
+    type = lib.types.path;
+    default = ../maps/regions.json;
+    description = ''
+      The regions offered (JSON list: id, name, parent, pbf and poly URLs on
+      download.geofabrik.de), from Geofabrik's index by scripts/map-regions.py.
+    '';
+  };
+
   options.resilience.mapmaker.enable = lib.mkOption {
     type = lib.types.bool;
     default = false;
