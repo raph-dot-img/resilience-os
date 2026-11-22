@@ -6,6 +6,51 @@ Git tags: `vX.Y.Z` on the commit of each release.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-11-22 — Graphical edition
+
+A new edition, **standard-gui**: the same system with a modern,
+minimal graphical interface instead of the text one (ADR 0026). It is
+one full-screen program (iced) in a kiosk compositor (cage): no desktop,
+no windows to manage. The text editions are unchanged. The graphical
+edition is tested in virtual machines; see docs/TESTING.md for what ran
+on real hardware.
+
+### Added
+- Graphical interface: large section tiles, a search box (`/`) that
+  finds apps, sections and handbook pages, Back and Home always at the
+  top left, the keys of each screen shown at its top right. Mouse,
+  touchpad and keyboard all work everywhere.
+- Native screens: handbook and reading view, offline library, Find
+  files, local messages (conversations, people nearby), Wi-Fi with
+  signal bars, recovery, users and security modes, USB sticks and
+  backups, system generations, notes, offline updates, community
+  network, resource packs and suggested sets, packs and files from a
+  nearby computer, sharing setup, keys and contacts, settings, system
+  status and network pages.
+- Native dialogs over a dimmed screen for every question (passwords,
+  names, the clock, who to encrypt for, the installer's questions);
+  Cancel stays the default of every confirmation.
+- Terminal programs (editors, games, tools) open in a terminal window
+  (foot) on top of the interface and come back to where you were.
+- If the graphical interface fails three times in a row, the text
+  interface starts instead; Ctrl+Alt+F2 always gives a text login.
+- Idle memory: about 45 MB for the compositor and the interface. The
+  edition adds about 60 MB to the system.
+- The GUI keeps its own log in `~/.local/state/resilience/gui.log`.
+- Search ranks names before descriptions.
+
+### Changed
+- The interface logic is shared by both interfaces (`resilience-shell`),
+  so the text and graphical interfaces behave the same way.
+- Offline update bundles can be made for the standard-gui edition.
+
+### Known issues
+- The licence notice, the installer and the table viewer (CSV) are
+  still shown in the text interface's style inside the window.
+- A keyboard layout chosen in Settings applies to the graphical
+  interface only after logging out and in again.
+- Password prompts of administrator actions open in a terminal window.
+
 ## [0.6.0] — 2026-11-21 — Offline maps
 
 Maps become useful on their own: find a place by name, see what is
