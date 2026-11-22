@@ -714,3 +714,6 @@ modest machine running the live ISO has little room for files.
 | Host run: `make --region luxembourg` against the real Geofabrik (48 MB, data 2026-11-21): download, MD5, 30 MB map, `info --check` ok; first 2.25 GB peak (osmium tags-filter), after dropping it 183 MB peak, 35 s; from a file (rectangle) likewise | PASS |
 | `cargo test --workspace`, `cargo clippy --all-targets` | PASS |
 | GUI preview of the new screen (filter, "made here" marker) | looked at |
+| Full run at `0efed01` (version 0.7.1): 28 checks + 3 live toplevels, one `nix eval` each, one build | PASS (vm-gui timed out once while the host was loaded: "foot" not up within 30 s; passed when re-run alone, no change) |
+| ISOs 0.7.1 (standard, standard-gui, minimal) built; standard and standard-gui booted in QEMU, BIOS and UEFI (`tests/iso/smoke.py`): menu / GUI home reached, licence recorded, v0.7.1 shown | PASS |
+| Update of a 0.7.0 BIOS install to 0.7.1 adds `EFI/BOOT/BOOTX64.EFI` | NOT TESTED (needs the owner's signed bundle) |
