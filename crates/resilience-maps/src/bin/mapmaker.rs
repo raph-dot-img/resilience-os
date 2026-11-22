@@ -1,6 +1,6 @@
 //! `resilience-mapmaker` — builds `resilience-1` map packs (ADR 0016 §2).
-//! For build machines only: the Nix derivations of `nix/maps` run it
-//! between osmium and tippecanoe. It is not installed in the system.
+//! The Nix derivations of `nix/maps` run it between osmium and tippecanoe;
+//! the standard edition installs it for `make` (a map made on this computer).
 //!
 //! ```text
 //! resilience-mapmaker classify --poly COVERAGE.poly --rows ROWS.jsonl
@@ -28,6 +28,8 @@
 //! resilience-mapmaker sea --poly COVERAGE.poly [--output FEATURES.geojsonseq] [INPUT|-]
 //!     OpenStreetMap water polygons cut by ogr2ogr (GeoJSON sequence) to
 //!     features of class sea for tippecanoe (standard output by default).
+//! resilience-mapmaker make [--config FILE] (--region ID | --pbf FILE [--poly FILE] [--region ID]) [--yes]
+//!     downloads (on request) and builds a map into ~/Maps, in the foreground.
 //! ```
 //!
 //! A summary goes to standard error. Exit status: 0 success, 1 failure,
@@ -39,7 +41,7 @@ use std::io::{self, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
-use resilience_maps::mapmaker::{classify, finish, overview, poly, sea};
+use resilience_maps::mapmaker::{classify, finish, make, overview, poly, sea};
 
 const USAGE: &str = "\
 Usage:
@@ -52,7 +54,8 @@ Usage:
       [--countries FILE] [--regions FILE] [--lakes FILE] [--rivers FILE] [--places FILE]
       [--elevations FILE]
   resilience-mapmaker bounds --poly FILE
-  resilience-mapmaker sea --poly FILE [--output FILE] [INPUT|-]";
+  resilience-mapmaker sea --poly FILE [--output FILE] [INPUT|-]
+  resilience-mapmaker make [--config FILE] (--region ID | --pbf FILE [--poly FILE] [--region ID]) [--yes]";
 
 const EXIT_USAGE: u8 = 64;
 
@@ -268,6 +271,32 @@ fn run_natural_earth(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn run_make(args: &[String]) -> Result<(), String> {
+    let mut req = make::Request {
+        config: resilience_core::mapmake::CONFIG_PATH.into(),
+        ..Default::default()
+    };
+    let mut rest: Vec<String> = Vec::new();
+    for a in args {
+        if a == "--yes" {
+            req.yes = true;
+        } else {
+            rest.push(a.clone());
+        }
+    }
+    let (o, pos) = parse(&rest, &["config", "region", "pbf", "poly"])?;
+    if !pos.is_empty() {
+        return Err("make takes no positional arguments".into());
+    }
+    if let Some(c) = o.get("config") {
+        req.config = c.into();
+    }
+    req.region = o.get("region").cloned();
+    req.pbf = o.get("pbf").map(Into::into);
+    req.poly = o.get("poly").map(Into::into);
+    make::make(&req).map(|_| ())
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
@@ -276,6 +305,7 @@ fn main() -> ExitCode {
         Some("natural-earth") => run_natural_earth(&args[1..]),
         Some("bounds") => run_bounds(&args[1..]),
         Some("sea") => run_sea(&args[1..]),
+        Some("make") => run_make(&args[1..]),
         Some("--version") => {
             println!("resilience-mapmaker {}", resilience_core::VERSION);
             return ExitCode::SUCCESS;

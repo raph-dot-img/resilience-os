@@ -7,6 +7,7 @@
     ./media.nix
     ./crypto.nix
     ./packs.nix
+    ./mapmaker.nix
     ./users.nix
     ./interface.nix
     ./gui.nix
