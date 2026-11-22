@@ -43,6 +43,8 @@ mod install_ui;
 mod library;
 #[path = "licence_ui.rs"]
 mod licence_ui;
+#[path = "mapmake_ui.rs"]
+mod mapmake_ui;
 #[path = "share_ui.rs"]
 mod share_ui;
 #[path = "update_ui.rs"]
@@ -57,6 +59,7 @@ pub use install_ui::{InstallForm, InstallInput, InstallRow};
 pub use library::{ItemPlace, stick_items};
 pub use library::{LibItem, PackRow, PacksScreen};
 pub use licence_ui::LicencePage;
+pub use mapmake_ui::{MAKE_MAP_LABEL, MakeRow};
 pub use share_ui::SET_SHARE_LABEL as SET_SHARE_LABEL_FOR_TESTS;
 pub use share_ui::{
     CommunityRow, PeerAction, PeerPack, SHARE_ROWS, ShareForm, ShareInput, service_label,
@@ -114,6 +117,8 @@ pub struct Paths {
     pub install_config: PathBuf,
     /// Present when the computer started with UEFI.
     pub efi: PathBuf,
+    /// Map making (ROADMAP Phase 5b); absent when it is not offered.
+    pub mapmaker_config: PathBuf,
 }
 
 impl Default for Paths {
@@ -135,6 +140,7 @@ impl Default for Paths {
             shared_dir: "/var/lib/resilience/shared".into(),
             hotspot_state: "/run/resilience-share/hotspot".into(),
             install_config: resilience_core::install::INSTALL_CONFIG_PATH.into(),
+            mapmaker_config: resilience_core::mapmake::CONFIG_PATH.into(),
             efi: "/sys/firmware/efi".into(),
         }
     }
@@ -217,6 +223,8 @@ pub enum Builtin {
     Packs,
     Map,
     MapFiles,
+    /// Make or update a map (ROADMAP Phase 5b).
+    MakeMap,
     Chat,
     /// The Wi-Fi mesh network (ADR 0021).
     Mesh,
@@ -251,7 +259,7 @@ pub enum Builtin {
 }
 
 impl Builtin {
-    pub const ALL: [Builtin; 35] = [
+    pub const ALL: [Builtin; 36] = [
         Builtin::Handbook,
         Builtin::Files,
         Builtin::Manual,
@@ -259,6 +267,7 @@ impl Builtin {
         Builtin::Packs,
         Builtin::Map,
         Builtin::MapFiles,
+        Builtin::MakeMap,
         Builtin::Chat,
         Builtin::Mesh,
         Builtin::Community,
@@ -298,6 +307,7 @@ impl Builtin {
             Builtin::Packs => "Resource packs: choose what to get",
             Builtin::Map => "Map",
             Builtin::MapFiles => "Maps on this computer & USB sticks",
+            Builtin::MakeMap => "Make or update a map",
             Builtin::Chat => "Local messages",
             Builtin::Mesh => "Mesh network (Wi-Fi without a router)",
             Builtin::Community => "Community network: share with computers nearby",
@@ -362,6 +372,12 @@ impl Builtin {
                 "See which maps this computer has (built in, installed, or on an open USB \
                  stick), what each one covers and how old its data is, and open the map \
                  on one of them. Map packs are added in Resource packs."
+            }
+            Builtin::MakeMap => {
+                "Make a detailed map of a region yourself, or update one made earlier: \
+                 choose it in the list of regions (downloaded from Geofabrik when you \
+                 agree, with OpenStreetMap data of the day) or take an extract from a USB \
+                 stick. It is built on this computer and kept in the folder Maps."
             }
             Builtin::Chat => {
                 "Write to people nearby, without the Internet: computers on the same \
@@ -468,7 +484,7 @@ impl Builtin {
             Builtin::Handbook | Builtin::Manual | Builtin::Library | Builtin::Packs => {
                 Category::Knowledge
             }
-            Builtin::Map | Builtin::MapFiles => Category::Maps,
+            Builtin::Map | Builtin::MapFiles | Builtin::MakeMap => Category::Maps,
             Builtin::Chat | Builtin::Mesh | Builtin::Community => Category::Communications,
             Builtin::Notes | Builtin::Files => Category::Productivity,
             Builtin::Network | Builtin::Wifi => Category::Networking,
@@ -521,6 +537,10 @@ impl Builtin {
                  geography openstreetmap osm"
             }
             Builtin::MapFiles => "map maps pack packs mbtiles usb stick coverage region",
+            Builtin::MakeMap => {
+                "make build create update map maps region country openstreetmap osm \
+                 geofabrik pbf extract download"
+            }
             Builtin::Chat => {
                 "message messages chat talk write contact contacts nearby local network \
                  mesh reticulum lxmf address offline communication"
@@ -755,6 +775,14 @@ pub enum View {
     /// computers heard sharing.
     Community {
         rows: Vec<CommunityRow>,
+        list: ListState,
+    },
+    /// Make or update a map (ROADMAP Phase 5b): extracts on sticks, then
+    /// the regions whose names contain the words typed.
+    MakeMap {
+        regions: Vec<resilience_core::mapmake::Region>,
+        sticks: Vec<MakeRow>,
+        query: String,
         list: ListState,
     },
     /// What can be done with one nearby computer.
@@ -1398,6 +1426,7 @@ impl App {
             | View::PeerFiles { list, .. }
             | View::ShareSetup { list, .. }
             | View::Keys { list, .. }
+            | View::MakeMap { list, .. }
             | View::Settings { list } => Some(list),
             _ => None,
         }
@@ -1433,6 +1462,7 @@ impl App {
             | View::PeerFiles { list, .. }
             | View::ShareSetup { list, .. }
             | View::Keys { list, .. }
+            | View::MakeMap { list, .. }
             | View::Settings { list } => list.selected(),
             _ => None,
         }
@@ -1548,6 +1578,7 @@ impl App {
                 kind: PackKind::Map,
                 ..
             } => HelpTopic::Maps,
+            View::MakeMap { .. } => HelpTopic::Maps,
             View::Library { .. } | View::Packs { .. } | View::PackSets { .. } => HelpTopic::Library,
             View::Search { .. } => HelpTopic::Search,
         }
@@ -1563,7 +1594,10 @@ impl App {
         if matches!(self.view(), View::Licence { .. }) {
             return self.licence_key(key);
         }
-        let typing = matches!(self.view(), View::Search { .. } | View::Files { .. });
+        let typing = matches!(
+            self.view(),
+            View::Search { .. } | View::Files { .. } | View::MakeMap { .. }
+        );
         match key.code {
             KeyCode::F(1) => {
                 let topic = self.help_topic();
@@ -1643,6 +1677,9 @@ impl App {
         if matches!(view, View::Updates { .. }) {
             return self.updates_key(view, key);
         }
+        if matches!(view, View::MakeMap { .. }) {
+            return self.make_map_key(view, key);
+        }
         if matches!(
             view,
             View::Community { .. }
@@ -1659,7 +1696,7 @@ impl App {
             // Handled by chat_key and install_key above.
             View::Chats { .. } | View::Nearby { .. } | View::Chat { .. } => {}
             View::Install { .. } | View::InstallDisks { .. } | View::InstallLayouts { .. } => {}
-            View::Updates { .. } => {}
+            View::Updates { .. } | View::MakeMap { .. } => {}
             View::Community { .. }
             | View::PeerMenu { .. }
             | View::PeerPacks { .. }
@@ -2379,6 +2416,7 @@ impl App {
             Builtin::Community => (Some(self.open_community()), Effect::None),
             Builtin::Install => (self.open_install(), Effect::None),
             Builtin::MapFiles => (self.open_map_files(), Effect::None),
+            Builtin::MakeMap => (self.open_make_map(), Effect::None),
             Builtin::Backup => {
                 let (volumes, error) = self.load_volumes();
                 let sel = (!volumes.is_empty()).then_some(0);
@@ -2929,6 +2967,7 @@ impl App {
             self.reload_backups();
         }
         self.share_after_run(label);
+        self.make_map_after_run(label);
         if label == PACKS_LABEL {
             // Back to the packs screen (from the stick list), refreshed.
             while matches!(

@@ -577,6 +577,7 @@ impl App {
             Builtin::Mesh => self.mesh_config().is_some(),
             Builtin::Community => self.share_offered(),
             Builtin::Install => self.install_present(),
+            Builtin::MakeMap => self.paths.mapmaker_config.exists(),
             _ => true,
         }
     }

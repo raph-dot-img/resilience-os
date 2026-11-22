@@ -128,7 +128,7 @@ pub fn load_regions(path: &Path) -> Result<Vec<Region>, String> {
     parse_regions(&text)
 }
 
-/// "Europe › France › Bretagne": the region with the regions it is in.
+/// "Europe > France > Bretagne": the region with the regions it is in.
 pub fn region_path(list: &[Region], id: &str) -> String {
     let mut names = Vec::new();
     let mut cur = list.iter().find(|r| r.id == id);
@@ -143,7 +143,7 @@ pub fn region_path(list: &[Region], id: &str) -> String {
             .and_then(|p| list.iter().find(|x| x.id == p));
     }
     names.reverse();
-    names.join(" › ")
+    names.join(" > ")
 }
 
 /// Regions whose path contains every word of `query` (case and accents
@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn region_list_paths_and_search() {
         let l = parse_regions(LIST).unwrap();
-        assert_eq!(region_path(&l, "bretagne"), "Europe › France › Bretagne");
+        assert_eq!(region_path(&l, "bretagne"), "Europe > France > Bretagne");
         let ids = |q| {
             search(&l, q)
                 .iter()
