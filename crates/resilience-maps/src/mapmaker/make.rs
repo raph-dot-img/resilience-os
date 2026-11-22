@@ -349,8 +349,19 @@ fn from_file(
             let mut c = command(&cfg.osmium, &p.work);
             c.args(["fileinfo", "-g", "header.boxes", "--"]).arg(file);
             let boxes = output("Reading the extract", &mut c)?;
-            let text = mapmake::box_poly(&id, &boxes)
-                .ok_or("the extract has no boundary file beside it and no box in its header")?;
+            // Not every extract has a box in its header: then the box of
+            // its data (osmium reads the whole file once).
+            let text = match mapmake::box_poly(&id, &boxes) {
+                Some(t) => t,
+                None => {
+                    let mut c = command(&cfg.osmium, &p.work);
+                    c.args(["fileinfo", "-e", "-g", "data.bbox", "--"])
+                        .arg(file);
+                    let data = output("Reading the extract", &mut c)?;
+                    mapmake::box_poly(&id, &data)
+                        .ok_or("the extract has no boundary file beside it and no place in it")?
+                }
+            };
             println!(
                 "(No {stem}.poly beside the extract: the map covers the extract's rectangle.)"
             );

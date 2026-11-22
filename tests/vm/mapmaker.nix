@@ -152,7 +152,7 @@ in
     wait_tty("1", "MAIN MENU")
     machine.succeed("test -f /etc/resilience/mapmaker.toml")
     def setting(f, key):
-        return machine.succeed(f"grep -o '^{key} = \"[^\"]*' {f}").split('"')[1]
+        return machine.succeed(f"grep -o '^{key} = \"[^\"]*' {f}").split('"')[1].strip()
     MAKE = setting("/etc/resilience/mapmaker.toml", "program") + " make"
     CURL = setting("/etc/resilience/mapmaker.toml", "curl")
     VIEWER = setting("/etc/resilience/system.toml", "maps")
@@ -160,7 +160,7 @@ in
     with subtest("a partial download is waiting (an earlier attempt stopped)"):
         machine.succeed(as_alice(f"mkdir -p {CACHE}"))
         machine.succeed(
-            f"{CURL} -sS https://{host}/europe/testland/testland-260101.osm.pbf | head -c 2000 "
+            f"{CURL} -sS https://{host}/europe/testland/testland-260101.osm.pbf | head -c 500 "
             f"> {CACHE}/testland-260101.osm.pbf.part && chown alice: {CACHE}/testland-260101.osm.pbf.part"
         )
 
@@ -194,10 +194,10 @@ in
         machine.send_key("ret")
         wait_tty("1", "MAKE OR UPDATE A MAP")
         wait_tty("1", r"made here: data of 2026-01")
-        log = geofabrik.succeed("cat /var/log/nginx/ranges.log")
-        print(log)
-        assert re.search(r"GET /europe/testland/testland-260101.osm.pbf HTTP/1.1 206 range=bytes=2000-", log), log
-        assert "HEAD /europe/testland/testland-latest.osm.pbf HTTP/1.1 307" in log, log
+        served = geofabrik.succeed("cat /var/log/nginx/ranges.log")
+        print(served)
+        assert re.search(r"GET /europe/testland/testland-260101.osm.pbf HTTP/[0-9.]+ 206 range=bytes=500-", served), served
+        assert re.search(r"HEAD /europe/testland/testland-latest.osm.pbf HTTP/[0-9.]+ 307", served), served
 
     with subtest("the map is the person's, checked, and nothing is left behind"):
         machine.succeed(f"stat -c %U {MAP} | grep -x alice")
