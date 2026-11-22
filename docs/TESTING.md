@@ -704,3 +704,14 @@ modest machine running the live ISO has little room for files.
 | — | Installer, rollback to previous generation | BLOCKED — no installer yet |
 | — | Recovery section with real generations; diagnostic report on a real system | NOT TESTED in VM (unit/TUI tests with fake profiles only) |
 | — | Backup / restore with a physical USB stick | NOT TESTED (QEMU usb-storage only) |
+
+## Catalog map packs, 23 more regions (branch `feat/map-packs`, 2026-11-22)
+
+| Test | Result |
+|---|---|
+| 23 Geofabrik extracts of 2026-11-21 (21 French regions + Corse, Belgium, Switzerland; 6.0 GB) fetched, MD5 checked against Geofabrik's | PASS |
+| `nix build .#mapPacks.ID` for each, one at a time: 52 s (Corse) to 380 s (Switzerland), peak 2.2-2.3 GB (osmium tags-filter); sea in the 12 coastal ones | PASS |
+| `resilience-maps info --check` on every pack: integrity ok, search available | PASS |
+| Published on the mirror (packs 3.2 GB + their inputs), SHA256SUMS rewritten; all 75 files HTTP 200; two downloaded back, same SHA-256 | PASS |
+| Catalog (`nix/packs/maps.nix`, 25 map packs) passes the build-time catalog check | PASS |
+| Installing one of the new packs through the TUI | NOT TESTED (same path as vm-packs; for 0.7.2) |
