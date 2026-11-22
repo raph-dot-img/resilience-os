@@ -1,0 +1,25 @@
+[package]
+name = "resilience-gui"
+description = "The Resilience OS graphical interface (ADR 0026)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "resilience-gui"
+path = "src/main.rs"
+
+[dependencies]
+resilience-core.workspace = true
+resilience-shell.workspace = true
+resilience-tui = { path = "../resilience-tui" }
+ratatui.workspace = true
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "wayland", "smol", "crisp", "canvas"] }
+serde_json = "1"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true

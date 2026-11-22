@@ -9,6 +9,7 @@
     ./packs.nix
     ./users.nix
     ./interface.nix
+    ./gui.nix
     ./security.nix
     ./networking.nix
     ./comms.nix

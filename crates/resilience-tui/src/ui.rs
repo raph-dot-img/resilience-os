@@ -11,9 +11,7 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap,
-};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use resilience_core::catalog::{Availability, Category};
 use resilience_core::config::ThemeName;
 use resilience_core::human_bytes;
@@ -35,6 +33,7 @@ use resilience_core::messages::{self, Direction, Name, Record, State, Status};
 use resilience_core::packs::{PackKind, PackState};
 use resilience_core::recovery;
 use resilience_core::wifi::{self, Network, Overview};
+use resilience_shell::list::ListState;
 
 const LOGO: [&str; 2] = [
     "█▀█ █▀▀ █▀ █ █   █ █▀▀ █▄ █ █▀▀ █▀▀",
@@ -42,45 +41,18 @@ const LOGO: [&str; 2] = [
 ];
 const SPINNER: [&str; 4] = ["|", "/", "-", "\\"];
 
-/// Local wall-clock time as HH:MM:SS.
-pub fn clock(t: SystemTime) -> String {
-    let secs = t
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0) as libc::time_t;
-    // SAFETY: localtime_r writes into the provided, zero-initialised struct.
-    let tm = unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&secs, &mut tm).is_null() {
-            return "--:--:--".into();
-        }
-        tm
-    };
-    format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
-}
+pub use resilience_shell::fmt::{clock, date_time};
 
-/// Local date and time, `2026-11-14 10:30`.
-pub fn date_time(t: SystemTime) -> String {
-    let secs = t
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0) as libc::time_t;
-    // SAFETY: localtime_r writes into the provided, zero-initialised struct.
-    let tm = unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&secs, &mut tm).is_null() {
-            return "?".into();
-        }
-        tm
-    };
-    format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}",
-        tm.tm_year + 1900,
-        tm.tm_mon + 1,
-        tm.tm_mday,
-        tm.tm_hour,
-        tm.tm_min
-    )
+/// Renders `l` with the shell's selection, keeping ratatui's scroll offset.
+fn render_list(f: &mut Frame, l: List, area: Rect, list: &mut resilience_shell::list::ListState) {
+    let mut st = ratatui::widgets::ListState::default()
+        .with_selected(list.selected())
+        .with_offset(list.offset());
+    f.render_stateful_widget(l, area, &mut st);
+    // ratatui clamps a stale selection to the rows drawn (None when there
+    // are none): keep that, as when the shell used ratatui's state.
+    list.select(st.selected());
+    list.set_offset(st.offset());
 }
 
 fn block<'a>(title: &'a str, theme: &Theme) -> Block<'a> {
@@ -100,9 +72,30 @@ fn marker(ok: Option<bool>, t: &Theme) -> Span<'static> {
     }
 }
 
+/// The screen without the big header, for the GUI's text panel (ADR 0026):
+/// the GUI draws its own title and status bars around it.
+pub fn draw_panel(f: &mut Frame, app: &mut App) {
+    let area = f.area();
+    let theme = Theme::new(app.theme);
+    f.render_widget(Block::new().style(theme.base), area);
+    let [body, footer] = Layout::vertical([Constraint::Min(0), Constraint::Length(2)]).areas(area);
+    let body = match app.sharing_banner() {
+        Some(b) => {
+            let [line, rest] =
+                Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(body);
+            f.render_widget(Paragraph::new(Span::styled(b, theme.warn)), line);
+            rest
+        }
+        None => body,
+    };
+    draw_body(f, app, body);
+    draw_footer(f, app, footer);
+    draw_modal(f, app, area);
+}
+
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
-    let theme = app.theme;
+    let theme = Theme::new(app.theme);
     f.render_widget(Block::new().style(theme.base), area);
     if area.width < 40 || area.height < 12 {
         let msg = Paragraph::new(format!(
@@ -138,7 +131,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect, tall: bool) {
-    let t = &app.theme;
+    let t = &Theme::new(app.theme);
     let b = Block::new()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
@@ -233,7 +226,7 @@ fn footer_hints(view: &View) -> &'static str {
 }
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
-    let t = &app.theme;
+    let t = &Theme::new(app.theme);
     let [keys, status] =
         Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
     f.render_widget(
@@ -287,7 +280,7 @@ fn draw_body(f: &mut Frame, app: &mut App, area: Rect) {
         View::Home { list } => draw_home(f, app, area, list),
         View::Category { cat, list } => draw_category(f, app, area, *cat, list),
         View::Handbook { pages, list, error } => {
-            let t = app.theme;
+            let t = Theme::new(app.theme);
             if let Some(e) = error {
                 let p = Paragraph::new(format!("The handbook could not be opened.\n\n{e}"))
                     .wrap(Wrap { trim: false })
@@ -316,24 +309,31 @@ fn draw_body(f: &mut Frame, app: &mut App, area: Rect) {
             scroll,
         } => {
             let lines: Vec<Line> = text.lines().map(|l| Line::from(l.to_string())).collect();
-            draw_scroll(f, &app.theme, area, title, lines, scroll);
+            draw_scroll(f, &Theme::new(app.theme), area, title, lines, scroll);
         }
         View::Help { topic, scroll } => {
             let lines = help::lines(*topic, app.mode())
                 .into_iter()
                 .map(Line::from)
                 .collect();
-            draw_scroll(f, &app.theme, area, "HELP", lines, scroll);
+            draw_scroll(f, &Theme::new(app.theme), area, "HELP", lines, scroll);
         }
         View::Status { scroll } => {
             let lines = status_lines(app);
-            draw_scroll(f, &app.theme, area, "SYSTEM STATUS", lines, scroll);
+            draw_scroll(
+                f,
+                &Theme::new(app.theme),
+                area,
+                "SYSTEM STATUS",
+                lines,
+                scroll,
+            );
         }
         View::Network { scroll } => {
             let lines = network_lines(app);
             draw_scroll(
                 f,
-                &app.theme,
+                &Theme::new(app.theme),
                 area,
                 "NETWORK STATUS & DIAGNOSTICS",
                 lines,
@@ -341,7 +341,7 @@ fn draw_body(f: &mut Frame, app: &mut App, area: Rect) {
             );
         }
         View::Notes { notes, list } => {
-            let t = app.theme;
+            let t = Theme::new(app.theme);
             let items: Vec<ListItem> = notes
                 .iter()
                 .map(|n| ListItem::new(format!("{:<40} {:>10}", n.name, human_bytes(n.size))))
@@ -385,7 +385,7 @@ fn draw_body(f: &mut Frame, app: &mut App, area: Rect) {
             draw_install_disks(f, app, area, disks, error.as_deref(), list)
         }
         View::InstallLayouts { list } => {
-            let t = app.theme;
+            let t = Theme::new(app.theme);
             let items: Vec<ListItem> = app
                 .install_form()
                 .map(|fm| fm.cfg.keymaps.clone())
@@ -467,7 +467,7 @@ fn net_summary(app: &App) -> (Option<bool>, String) {
 }
 
 fn status_panel(app: &App) -> Vec<Line<'static>> {
-    let t = &app.theme;
+    let t = &Theme::new(app.theme);
     let s = &app.snapshot;
     let row = |label: &str, m: Span<'static>, value: String| {
         Line::from(vec![
@@ -546,7 +546,7 @@ fn status_panel(app: &App) -> Vec<Line<'static>> {
 }
 
 fn draw_home(f: &mut Frame, app: &App, area: Rect, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let wide = area.width >= 76;
     let [status_area, menu_area] = if wide {
         Layout::horizontal([Constraint::Length(38), Constraint::Min(0)]).areas(area)
@@ -578,7 +578,7 @@ fn draw_home(f: &mut Frame, app: &App, area: Rect, list: &mut ListState) {
         .style(t.base)
         .highlight_style(t.selected)
         .highlight_symbol("> ");
-    f.render_stateful_widget(l, list_area, list);
+    render_list(f, l, list_area, list);
     if let Some(c) = list.selected().and_then(|i| cats.get(i)) {
         f.render_widget(
             Paragraph::new(category_description(*c))
@@ -590,7 +590,7 @@ fn draw_home(f: &mut Frame, app: &App, area: Rect, list: &mut ListState) {
 }
 
 fn entry_detail(app: &App, e: Entry) -> Vec<Line<'static>> {
-    let t = &app.theme;
+    let t = &Theme::new(app.theme);
     let mode = app.mode();
     match e {
         Entry::Builtin(b) => vec![
@@ -627,7 +627,7 @@ fn entry_detail(app: &App, e: Entry) -> Vec<Line<'static>> {
 }
 
 fn draw_category(f: &mut Frame, app: &App, area: Rect, cat: Category, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let entries = app.entries(cat);
     let items: Vec<ListItem> = entries
         .iter()
@@ -694,7 +694,7 @@ fn draw_list(
         .highlight_style(t.selected)
         .highlight_symbol("> ")
         .block(b);
-    f.render_stateful_widget(l, area, list);
+    render_list(f, l, area, list);
 }
 
 /// Word-wrap plain lines to `width` columns (by character count).
@@ -776,8 +776,30 @@ fn heading(t: &Theme, s: &str) -> Line<'static> {
     Line::from(Span::styled(format!("== {s} =="), t.accent))
 }
 
+/// The lines of a scroll page as plain text (the GUI draws them itself).
+pub fn plain(lines: Vec<Line<'static>>) -> String {
+    lines
+        .iter()
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn status_text(app: &App) -> String {
+    plain(status_lines(app))
+}
+
+pub fn network_text(app: &App) -> String {
+    plain(network_lines(app))
+}
+
 fn status_lines(app: &App) -> Vec<Line<'static>> {
-    let t = &app.theme;
+    let t = &Theme::new(app.theme);
     let s = &app.snapshot;
     let mut l = vec![heading(t, "SYSTEM")];
     let state_ok = app.sys_state.is_ok() && app.failed_units.is_empty();
@@ -933,7 +955,7 @@ fn outcome_line(t: &Theme, label: &str, o: &ProbeOutcome) -> Line<'static> {
 }
 
 fn network_lines(app: &App) -> Vec<Line<'static>> {
-    let t = &app.theme;
+    let t = &Theme::new(app.theme);
     let n = &app.net;
     let (ok, summary) = net_summary(app);
     let mut l = vec![
@@ -1073,7 +1095,7 @@ fn network_lines(app: &App) -> Vec<Line<'static>> {
 }
 
 fn draw_settings(f: &mut Frame, app: &App, area: Rect, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let kb = &app.sys.keyboard;
     let rows = (ThemeName::ALL.len() + kb.layouts.len()) as u16;
     let [themes, info] =
@@ -1128,7 +1150,7 @@ fn draw_settings(f: &mut Frame, app: &App, area: Rect, list: &mut ListState) {
 // ----- installer (ADR 0022) -------------------------------------------------
 
 fn draw_install(f: &mut Frame, app: &App, area: Rect, form: &InstallForm, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let items: Vec<ListItem> = form
         .rows()
         .into_iter()
@@ -1215,7 +1237,7 @@ fn draw_install_disks(
     error: Option<&str>,
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let items: Vec<ListItem> = disks
         .iter()
         .map(|d| {
@@ -1286,7 +1308,7 @@ fn draw_users(
     error: Option<&str>,
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     if let Some(e) = error {
         let p = Paragraph::new(format!(
             "The list of accounts could not be read.\n\n{e}\n\n\
@@ -1354,7 +1376,7 @@ fn draw_users(
 }
 
 fn draw_choose_mode(f: &mut Frame, app: &App, area: Rect, row: &AccountRow, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let items: Vec<ListItem> = MODES
         .iter()
         .map(|m| {
@@ -1399,7 +1421,7 @@ fn draw_choices(
     items: &[crate::app::Choice],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let rows: Vec<ListItem> = items
         .iter()
         .enumerate()
@@ -1419,7 +1441,7 @@ fn draw_keys(
     rows: &[crate::app::KeyRow],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let items: Vec<ListItem> = rows
         .iter()
         .map(|r| ListItem::new(app.key_row_text(r)))
@@ -1463,7 +1485,7 @@ fn draw_keys(
 }
 
 fn draw_recovery(f: &mut Frame, app: &App, area: Rect, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let all = app.recovery_items();
     let items: Vec<ListItem> = all
         .iter()
@@ -1502,7 +1524,7 @@ fn draw_licence(
     full_seen: bool,
     ticked: bool,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let title = app
         .sys
         .licence
@@ -1551,7 +1573,7 @@ fn draw_updates(
     error: Option<&str>,
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let title = "UPDATE FROM A USB STICK";
     if let Some(e) = error {
         let p = Paragraph::new(format!(
@@ -1656,7 +1678,7 @@ fn draw_generations(
     gens: &[recovery::Generation],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     if gens.is_empty() {
         let p = Paragraph::new(
             "No generations are recorded on this machine. This is normal on the live \
@@ -1734,7 +1756,7 @@ fn draw_media(
     list: &mut ListState,
     purpose: MediaPurpose,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let title = match purpose {
         MediaPurpose::InstallPacks => "COPY PACKS FROM A USB STICK",
         MediaPurpose::ReadPacks => "READ PACKS ON A USB STICK",
@@ -1832,7 +1854,7 @@ fn draw_library(
     list: &mut ListState,
 ) {
     let map = kind == PackKind::Map;
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let rows: Vec<ListItem> = items
         .iter()
         .map(|i| {
@@ -1888,7 +1910,7 @@ fn draw_library(
 }
 
 fn draw_pack_sets(f: &mut Frame, app: &App, area: Rect, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     // The packs screen is right below this one.
     let Some(s) = app.stack.iter().rev().find_map(|v| match v {
         View::Packs { s, .. } => Some(&**s),
@@ -1953,7 +1975,7 @@ fn draw_pack_sets(f: &mut Frame, app: &App, area: Rect, list: &mut ListState) {
 }
 
 fn draw_packs(f: &mut Frame, app: &App, area: Rect, s: &PacksScreen, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let [top, l, d] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(5),
@@ -2067,7 +2089,7 @@ fn draw_wifi(
     error: Option<&str>,
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let message = match (overview, error) {
         (_, Some(e)) => Some((
             format!("Wi-Fi information could not be read.\n\n{e}\n\nPress r to try again."),
@@ -2183,7 +2205,7 @@ fn draw_backups(
     files: &[BackupFile],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let mut items = vec![ListItem::new("+ Make a new backup of my files")];
     items.extend(files.iter().map(|b| {
         ListItem::new(format!(
@@ -2244,7 +2266,7 @@ fn draw_files(
     list: &mut ListState,
     pick: Option<crate::app::Pick>,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let title = pick
         .map(|p| p.title())
         .unwrap_or("FIND FILES (home folder and open USB sticks)");
@@ -2299,7 +2321,7 @@ fn draw_files(
 }
 
 fn draw_table(f: &mut Frame, app: &App, area: Rect, tbl: &crate::app::Table) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let inner_w = area.width.saturating_sub(2) as usize;
     let inner_h = area.height.saturating_sub(2) as usize;
     let cols = tbl.widths.len();
@@ -2352,7 +2374,7 @@ fn draw_search(
     hits: &[SearchHit],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let [input, results] =
         Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).areas(area);
     let cursor = if (app.tick / 2).is_multiple_of(2) {
@@ -2407,7 +2429,7 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 }
 
 fn draw_modal(f: &mut Frame, app: &App, area: Rect) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let Some(m) = &app.modal else { return };
     let (title, mut lines, style) = match m {
         Modal::Message { title, body, error } => {
@@ -2774,7 +2796,7 @@ fn draw_chats(
     status: &Status,
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let now = crate::app::chat_now();
     let items: Vec<ListItem> = rows
         .iter()
@@ -2854,7 +2876,7 @@ fn draw_chats(
 }
 
 fn draw_nearby(f: &mut Frame, app: &App, area: Rect, rows: &[NearbyRow], list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let now = crate::app::chat_now();
     let items: Vec<ListItem> = rows
         .iter()
@@ -2942,7 +2964,7 @@ fn draw_chat(
     records: &[Record],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let now = crate::app::chat_now();
     let width = usize::from(area.width.saturating_sub(6));
     let items: Vec<ListItem> = records
@@ -2992,7 +3014,7 @@ fn draw_community(
     rows: &[CommunityRow],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let now = crate::app::chat_now();
     let items: Vec<ListItem> = rows
         .iter()
@@ -3072,7 +3094,7 @@ fn draw_peer_menu(
     actions: &[PeerAction],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let items: Vec<ListItem> = actions.iter().map(|a| ListItem::new(a.name())).collect();
     let [l, d] = Layout::vertical([Constraint::Min(5), Constraint::Length(5)]).areas(area);
     draw_list(f, &t, l, "NEARBY COMPUTER", items, list, "");
@@ -3105,7 +3127,7 @@ fn draw_peer_packs(
     ticked: &[bool],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let items: Vec<ListItem> = rows
         .iter()
         .zip(ticked)
@@ -3159,7 +3181,7 @@ fn draw_peer_packs(
 }
 
 fn draw_share_setup(f: &mut Frame, app: &App, area: Rect, form: &ShareForm, list: &mut ListState) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let iface = form
         .interfaces
         .get(form.iface)
@@ -3217,7 +3239,7 @@ fn draw_peer_files(
     rows: &[resilience_core::share::SharedFile],
     list: &mut ListState,
 ) {
-    let t = app.theme;
+    let t = Theme::new(app.theme);
     let items: Vec<ListItem> = rows
         .iter()
         .map(|r| {

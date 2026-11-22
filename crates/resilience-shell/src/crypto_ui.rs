@@ -9,8 +9,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::widgets::ListState;
+use crate::input::{KeyCode, KeyEvent, KeyModifiers};
+use crate::list::ListState;
 use resilience_core::crypto::{self, Contact, KeyStore};
 use resilience_core::openpgp::{self, PgpKey};
 use resilience_core::printable;

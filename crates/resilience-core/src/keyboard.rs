@@ -51,6 +51,36 @@ impl Default for KeyboardConfig {
     }
 }
 
+/// The XKB layout and variant (Wayland, ADR 0026) matching a kbd keymap
+/// name, for the layouts Resilience offers and common others. `None` for
+/// names we do not know: the caller then keeps the US layout.
+pub fn xkb_for(id: &str) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        "us" => ("us", ""),
+        "uk" => ("gb", ""),
+        "fr" | "fr-latin1" | "fr-latin9" => ("fr", ""),
+        "fr-bepo" => ("fr", "bepo"),
+        "be-latin1" => ("be", ""),
+        "fr_CH" | "fr_CH-latin1" => ("ch", "fr"),
+        "de" | "de-latin1" => ("de", ""),
+        "de-latin1-nodeadkeys" => ("de", "nodeadkeys"),
+        "de_CH-latin1" | "sg" | "sg-latin1" => ("ch", ""),
+        "es" => ("es", ""),
+        "it" => ("it", ""),
+        "pt-latin1" => ("pt", ""),
+        "br-abnt2" => ("br", ""),
+        "nl" => ("nl", ""),
+        "dvorak" => ("us", "dvorak"),
+        "pl" | "pl2" => ("pl", ""),
+        "ru" => ("ru", ""),
+        "se-lat6" | "se-latin1" => ("se", ""),
+        "no-latin1" | "no" => ("no", ""),
+        "dk-latin1" | "dk" => ("dk", ""),
+        "fi" => ("fi", ""),
+        _ => return None,
+    })
+}
+
 /// A keymap name we are willing to pass to `loadkeys`: 1 to 40 ASCII
 /// letters, digits, `-` and `_`, not starting with `-`.
 pub fn is_valid_id(id: &str) -> bool {
@@ -241,5 +271,29 @@ mod tests {
             toml::from_str::<KeyboardConfig>("").expect("empty"),
             KeyboardConfig::default()
         );
+    }
+
+    #[test]
+    fn xkb_names_for_offered_layouts() {
+        for id in [
+            "us",
+            "uk",
+            "fr",
+            "fr-bepo",
+            "be-latin1",
+            "fr_CH",
+            "de-latin1",
+            "de_CH-latin1",
+            "es",
+            "it",
+            "pt-latin1",
+            "nl",
+            "dvorak",
+        ] {
+            assert!(xkb_for(id).is_some(), "{id}");
+        }
+        assert_eq!(xkb_for("uk"), Some(("gb", "")));
+        assert_eq!(xkb_for("fr-bepo"), Some(("fr", "bepo")));
+        assert_eq!(xkb_for("nope"), None);
     }
 }

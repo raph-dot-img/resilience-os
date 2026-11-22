@@ -10,8 +10,8 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
-use ratatui::widgets::ListState;
+use crate::input::{KeyCode, KeyEvent};
+use crate::list::ListState;
 use resilience_core::admin::AdminConfig;
 use resilience_core::media::Volume;
 use resilience_core::update::{self, Pointer, UpdateSettings};

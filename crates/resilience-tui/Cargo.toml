@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 resilience-core.workspace = true
+resilience-shell.workspace = true
 ratatui.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
