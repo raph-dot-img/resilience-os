@@ -92,7 +92,7 @@ Record the new revision in CHANGELOG.md. Moving to a new NixOS release
 
 ## Publishing a release on the mirrors
 
-`scripts/make-release.sh [--minimal] [--update-key NIX_KEY] [--sign MINISIGN_KEY] VERSION OUTDIR`
+`scripts/make-release.sh [--minimal] [--gui] [--update-key NIX_KEY] [--sign MINISIGN_KEY] VERSION OUTDIR`
 (at tag `vVERSION`, clean tree) fills `OUTDIR/releases/VERSION/` with the
 ISOs, the offline update bundles (`.tar`, extracted to a stick's root), the
 source archive and `SHA256SUMS`, signed with the minisign release key

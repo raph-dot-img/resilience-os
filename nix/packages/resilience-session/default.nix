@@ -45,6 +45,31 @@
     fi
     cd "$HOME" 2>/dev/null || cd /
 
+    # Graphical edition (ADR 0026): the GUI on tty1, the TUI elsewhere and
+    # after three quick GUI failures in a row.
+    if [ -x /etc/resilience/gui-session ] && [ "$(tty 2>/dev/null)" = /dev/tty1 ]; then
+      gui_failures=0
+      while [ "$gui_failures" -lt 3 ]; do
+        started=$(date +%s)
+        rc=0
+        /etc/resilience/gui-session || rc=$?
+        if [ "$rc" -eq 0 ]; then
+          exit 0
+        fi
+        if [ $(( $(date +%s) - started )) -lt 60 ]; then
+          gui_failures=$((gui_failures + 1))
+        else
+          gui_failures=1
+        fi
+        printf '\033[0m\033[2J\033[H'
+        echo "The graphical interface stopped (exit code $rc). Restarting it..."
+        sleep 2
+      done
+      echo "The graphical interface failed 3 times: using the text interface."
+      echo "Details: ~/.local/state/resilience/gui.log."
+      sleep 3
+    fi
+
     rapid=0
     while true; do
       started=$(date +%s)

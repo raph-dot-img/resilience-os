@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use ratatui::widgets::ListState;
+use crate::list::ListState;
 use resilience_core::human_bytes;
 use resilience_core::network::LinkLevel;
 use resilience_core::packs::{self, Inventory, PackCategory, PackConfig, PackKind, PackState};
@@ -379,8 +379,8 @@ pub fn library_items(cfg: &PackConfig, kind: PackKind) -> Vec<LibItem> {
 }
 
 /// Move the selection over selectable rows only, with wrap-around.
-pub fn nav_rows(list: &mut ListState, rows: &[PackRow], key: ratatui::crossterm::event::KeyEvent) {
-    use ratatui::crossterm::event::KeyCode;
+pub fn nav_rows(list: &mut ListState, rows: &[PackRow], key: crate::input::KeyEvent) {
+    use crate::input::KeyCode;
     let selectable: Vec<usize> = rows
         .iter()
         .enumerate()

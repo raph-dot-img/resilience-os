@@ -8,9 +8,12 @@ Version 0.4.0. Decisions and their rationale live in `docs/decisions/`.
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Launched programs (nano, mc, htop, games, nmtui ...)  fixed argv      │
 ├──────────────────────────────────────────────────────────────────────┤
-│ resilience TUI (Rust, ratatui)        unprivileged, per user          │
-│   app.rs state machine → Effect { None | Quit | Run }                 │
-│   ui.rs rendering   help.rs   theme.rs                                │
+│ resilience TUI (ratatui)  |  resilience-gui (iced, ADR 0026, planned) │
+│   rendering + input translation only    unprivileged, per user        │
+├──────────────────────────────────────────────────────────────────────┤
+│ resilience-shell (Rust library, no UI toolkit)                        │
+│   app.rs state machine → Effect { None | Quit | Run }  help.rs        │
+│   input.rs (keys)  list.rs (selection)  fmt.rs (local time)           │
 ├──────────────────────────────────────────────────────────────────────┤
 │ resilience-core (Rust library)                                        │
 │   status network mode catalog config handbook notes launch proc       │

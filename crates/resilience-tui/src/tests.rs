@@ -5,13 +5,13 @@ use std::path::{Path, PathBuf};
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use resilience_core::admin;
 use resilience_core::catalog::{Catalog, Category};
 use resilience_core::clock;
 use resilience_core::config::{SystemConfig, ThemeName, ToolPaths, UserSettings};
 use resilience_core::mode::{Detected, Mode};
 use resilience_core::packs::PackKind;
+use resilience_shell::input::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{
     App, BACKUP_LABEL, Builtin, CHECK_LABEL, CRYPTO_LABEL, Effect, EncryptTarget, Entry,
@@ -1357,7 +1357,7 @@ fn restore_and_check_use_the_selected_backup() {
         volume,
         mount: stick.clone(),
         files: resilience_core::backup::list_backups(&stick),
-        list: ratatui::widgets::ListState::default().with_selected(Some(0)),
+        list: resilience_shell::list::ListState::default().with_selected(Some(0)),
     });
     let screen = render(&mut a, 80, 24);
     assert!(screen.contains("2026-11-14 10:30:00 UTC"), "{screen}");
@@ -4362,7 +4362,7 @@ fn push_updates(a: &mut App, stick: &Path) {
     a.stack.push(View::Updates {
         rows,
         error: None,
-        list: ratatui::widgets::ListState::default().with_selected(Some(0)),
+        list: resilience_shell::list::ListState::default().with_selected(Some(0)),
     });
 }
 
@@ -5001,5 +5001,74 @@ fn community_network_finds_reads_and_shares() {
             .contains(&crate::app::CommunityRow::Hotspot {
                 on: Some("\"Resilience-hotspot\" on wlan0".into())
             })
+    );
+}
+
+// Pointer entry points used by the GUI (ADR 0026).
+
+#[test]
+fn choose_row_opens_like_enter() {
+    let mut a = app(Mode::UltraStable, "choose");
+    let cats = a.home_categories();
+    assert!(cats.len() >= 2);
+    assert_eq!(a.choose_row(1), Effect::None);
+    match a.view() {
+        View::Category { cat, .. } => assert_eq!(*cat, cats[1]),
+        _ => panic!("category view"),
+    }
+    assert_eq!(a.selected_row(), Some(0));
+    // A modal blocks pointer choices underneath it.
+    a.go_home();
+    press(&mut a, KeyCode::Char('q'));
+    assert!(a.modal.is_some());
+    assert_eq!(a.choose_row(0), Effect::None);
+    assert!(matches!(a.view(), View::Home { .. }));
+}
+
+#[test]
+fn go_home_and_set_search() {
+    let mut a = app(Mode::UltraStable, "gohome");
+    a.choose_row(0);
+    a.set_search("edit");
+    let View::Search { query, hits, .. } = a.view() else {
+        panic!("search view")
+    };
+    assert_eq!(query, "edit");
+    assert!(!hits.is_empty());
+    let depth = a.stack.len();
+    // Typing more replaces the search, it does not stack another one.
+    a.set_search("editor");
+    assert_eq!(a.stack.len(), depth);
+    a.set_search(&"x".repeat(100));
+    let View::Search { query, .. } = a.view() else {
+        panic!("search view")
+    };
+    assert_eq!(query.chars().count(), 64);
+    a.go_home();
+    assert_eq!(a.stack.len(), 1);
+    assert!(matches!(a.view(), View::Home { .. }));
+}
+
+#[test]
+fn go_home_never_skips_the_licence_notice() {
+    let mut a = licence_app("gohome-licence");
+    assert!(matches!(a.view(), View::Licence { .. }));
+    a.go_home();
+    a.set_search("x");
+    assert!(matches!(a.view(), View::Licence { .. }));
+    assert_eq!(a.choose_row(0), Effect::None);
+    assert!(matches!(a.view(), View::Licence { .. }));
+}
+
+#[test]
+fn search_ranks_names_before_descriptions() {
+    let a = app(Mode::UltraStable, "search-rank");
+    let hits = a.search("recovery");
+    assert!(
+        matches!(
+            hits.first(),
+            Some(SearchHit::Entry(Entry::Builtin(Builtin::Recovery)))
+        ),
+        "{hits:?}"
     );
 }

@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crate::input::{KeyCode, KeyEvent, KeyModifiers};
 use resilience_core::admin::AdminConfig;
 use resilience_core::licence::{self, LicenceSettings};
 use resilience_core::proc::run_full_env;

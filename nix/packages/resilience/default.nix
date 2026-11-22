@@ -34,6 +34,17 @@ rustPlatform.buildRustPackage {
   };
 
   cargoLock.lockFile = root + "/Cargo.lock";
+  # The graphical interface is its own package (nix/packages/resilience-gui).
+  cargoBuildFlags = [
+    "--workspace"
+    "--exclude"
+    "resilience-gui"
+  ];
+  cargoTestFlags = [
+    "--workspace"
+    "--exclude"
+    "resilience-gui"
+  ];
 
   # The backup round-trip test runs the real tools (tar, sha256sum: stdenv).
   nativeCheckInputs = [

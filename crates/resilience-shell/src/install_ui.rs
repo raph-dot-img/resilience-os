@@ -8,8 +8,8 @@
 
 use std::time::Duration;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::widgets::ListState;
+use crate::input::{KeyCode, KeyEvent, KeyModifiers};
+use crate::list::ListState;
 use resilience_core::admin::AdminConfig;
 use resilience_core::install::{
     self, Disk, Firmware, INSTALL_CONFIG_PATH, InstallConfig, LSBLK_COLUMNS, MAX_ACCOUNTS,
@@ -162,7 +162,7 @@ impl App {
         })
     }
 
-    pub(crate) fn install_form(&self) -> Option<&InstallForm> {
+    pub fn install_form(&self) -> Option<&InstallForm> {
         self.stack.iter().rev().find_map(|v| match v {
             View::Install { form, .. } => Some(form.as_ref()),
             _ => None,

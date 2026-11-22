@@ -9,10 +9,12 @@ are numbered the same.
 
 ## 1. Identity and purpose
 
-**Resilience OS** is an offline-first, low-resource, terminal-only Linux
+**Resilience OS** is an offline-first, low-resource, terminal-first Linux
 distribution for **x86_64 PCs**, built on **NixOS**. It must stay useful — information,
 productivity, local communication, security tools — with no Internet at all.
-Primary interface: a Rust TUI (`resilience`). No X11, Wayland, desktop or WM.
+Primary interface: a Rust TUI (`resilience`). No X11, desktop or WM. From 0.7.0 a
+**GUI edition** is planned (ADR 0026: cage Wayland kiosk + `resilience-gui` in iced, one
+full-screen app, state machine shared with the TUI in `resilience-shell`).
 Editions: **standard** is the main one (the live ISO we build and test);
 **minimal** is kept as a secondary edition.
 
@@ -94,13 +96,21 @@ flake.nix ── nixosModules.default = nix/modules ── imported by every sys
    │                            on the card) and resilience-hotspot-fwd in FORWARD (DROP in and out,
    │                            never flushed by the firewall's own scripts)); dnsmasq-shared.d:
    │                            no-resolv, home.arpa only; mesh and hotspot exclude each other
+   │            gui.nix         GUI edition (ADR 0026): resilience.gui.{enable,package} (profile
+   │                            standard-gui = standard + gui.enable, edition "standard-gui") ->
+   │                            /etc/resilience/gui-session: cage (no Xwayland, pixman, -d -s)
+   │                            + resilience-gui; fonts dir (InterVariable + 3 DejaVu), foot via
+   │                            a wrapper with its own ini (RESILIENCE_TERMINAL); XKB layout from
+   │                            `resilience-gui xkb`; resilience-session runs it on tty1 only,
+   │                            back to the TUI after 3 quick failures
    │            boot.nix power.nix applications/{productivity,system-tools,networking,entertainment}.nix
-   ├─ nixosConfigurations: live-standard, live-minimal (ISO), dev-vm (9p VM)
-   ├─ packages: resilience, resilience-session, resilience-handbook, resilience-world-map, iso, iso-minimal, vm
+   ├─ nixosConfigurations: live-standard, live-standard-gui, live-minimal (ISO), dev-vm (9p VM)
+   ├─ packages: resilience (workspace minus the GUI), resilience-gui, iso-gui, resilience-session, resilience-handbook, resilience-world-map, iso, iso-minimal, vm
    ├─ legacyPackages.mapPacks.{luxembourg,testland}: map packs (nix/maps, build machines only)
    └─ checks: resilience (cargo test), vm-boot-offline, vm-modes, vm-admin,
               vm-backup, vm-wifi, vm-generations, vm-packs, vm-documents, vm-crypto, vm-install,
               vm-install-uefi, vm-maps, vm-comms, vm-mesh, vm-share, vm-hotspot, vm-cable, vm-update, vm-licence,
+              vm-gui (OCR on the GUI, foot round trip, Ctrl+Alt+F2, fallback to the TUI, idle RSS),
               security-invariants, eval-live-iso, map-pack-testland, map-pack-reproducible, map-world,
               comms-messages (the messaging program with real Reticulum + LXMF, no VM)
 
@@ -148,8 +158,23 @@ crates/resilience-maps  binaries (ADR 0016, UNPRIVILEGED): `resilience-maps` (vi
                         writes OpenStreetMap water polygons cut by ogr2ogr as water/sea).
                         nix/packages/resilience-world-map: the built-in world overview
                         (Natural Earth, z0-7), a `[[builtin]]` maps entry of packs.toml
-crates/resilience-tui   binary `resilience`: app.rs (state machine, returns Effects),
-                        ui.rs (rendering), theme.rs, help.rs, tests.rs
+crates/resilience-shell library (ADR 0026): the front-end independent interface logic:
+                        app.rs (state machine, returns Effects) + its screen modules
+                        (*_ui.rs, library.rs), help.rs, input.rs (KeyEvent, crossterm
+                        names), list.rs (ListState: selection + offset), fmt.rs (local time).
+                        No ratatui/crossterm here: shared by the TUI and the GUI
+crates/resilience-gui   binary `resilience-gui` (ADR 0026, iced 0.14, tiny-skia + wayland +
+                        smol only): main.rs (Gui: native Home/Category/Search/Settings,
+                        grid arrows, click = App::choose_row), textpanel.rs (other screens:
+                        TUI ui::draw_panel into a TestBackend buffer -> styled mono text),
+                        run.rs (Effect::Run -> 0600 JSON in $XDG_RUNTIME_DIR -> foot ->
+                        `resilience-gui run FILE` -> resilience_tui::run_foreground), style.rs
+                        (palette, iced key -> shell key). `resilience-gui xkb` for the session.
+                        Preview without a display: scripts/gui-preview.sh OUT.png [WxH] [KEYS]
+crates/resilience-tui   library + binary `resilience`: lib.rs (re-exports shell's app/help as
+                        crate::app/help; run_foreground), keys.rs (crossterm -> shell keys), ui.rs
+                        (rendering; theme from app.theme: ThemeName), theme.rs, tests.rs
+                        (flow + screen tests; flow tests move to the shell later)
 nix/packages/resilience-session  login shell: runs TUI, restarts after crash, refuses -c
 handbook/*.md           offline user handbook shipped in the system
 tests/vm/*.nix          NixOS VM tests (QEMU/KVM via nix build .#checks...)
@@ -490,6 +515,8 @@ Commit trailers: `Co-Authored-By: Claude …` as instructed by the session.
 
 ## 11. Rust conventions
 
+- `resilience-shell` has no ratatui/crossterm/iced code (ADR 0026); screen logic goes
+  there, drawing in the front ends.
 - `resilience-core` has no UI code; every system reader has a pure parser
   with unit tests. `unsafe` only for libc calls, each with a `// SAFETY:` comment.
 - No `unwrap()` outside tests (clippy warns); `expect` only for invariants.
@@ -742,9 +769,14 @@ See ROADMAP.md. Current: 0.6.0 (maps) is published (2026-11-21). Before: 0.5.0 i
 (2026-11-20); maps (Phase 5, slices 10-13; the TUI stop after quitting a
 program, found 2026-11-20, is fixed on `feat/maps-search`) for 0.6.0
 (owner, 2026-11-19). Release
-0.7.0 (owner, 2026-11-20): Phase 11, offline assistant (local model via Ollama or
+0.7.0 (owner, 2026-11-21): GUI edition (ADR 0026 accepted, branch `feat/gui`). Release
+0.8.0: Phase 11, offline assistant (local model via Ollama or
 llama.cpp, models as hash-pinned packs, answers grounded in the
-libraries and handbook with sources); ADR first; not started.
+libraries and handbook with sources); ADR first; not started. Release 0.7.1
+(owner, 2026-11-21): build your own map (Maps → Make or update a map, ROADMAP Phase 5b);
+catalog map packs rebuilt once a year. Release 0.9.0
+(owner, 2026-11-21): Phase 13, music player, audio recorder, webcam video recorder,
+offline translation with downloadable languages; not started.
 
 ## 17. Important decisions (docs/decisions/)
 
@@ -773,6 +805,7 @@ libraries and handbook with sources); ADR first; not started.
 - 0023 Offline updates: signed Nix binary cache on a USB stick (release key in nix/release-keys.nix, passed per import, never in nix.conf), helper `apply-update` (auth_admin, newer version of this edition and variant only, switch-to-configuration boot), `check-update` as the user, TUI Recovery → Update from a USB stick
 - 0024 Licence notice: before an account's first use of the TUI, Hippocratic License 2.1 summary + original text, "I certify that I have read" → helper `record-licence SHA256` (allow_active=yes) appends to /var/lib/resilience/licence-acceptances.log (root 0644); `resilience.licence.prompt` off only in VM tests (flake wrapper, mkDefault); live ISO asks at every start
 - 0025 Community network (accepted 2026-11-19, implemented, reviewed; 0.5.0): sharing packs/library/folder/pages over HTTP (one read-only nginx, TCP 80, one interface) only via helper `set-share` (auth_admin, not kept across reboots), discovery by Reticulum announces, joining as the user (peer packs hash-checked by the store, pages via a loopback relay + restricted lynx), hotspot via `set-hotspot` (auth_admin, WPA2, no forwarding), expert DNS in the hotspot's dnsmasq (`home.arpa`)
+- 0026 GUI edition (accepted 2026-11-21, 0.7.0): cage kiosk + iced app, shared `resilience-shell`, own polkit agent, `resilience.interface`
 
 ## 18. How to continue safely
 

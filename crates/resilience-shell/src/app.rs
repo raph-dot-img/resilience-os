@@ -10,8 +10,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::widgets::ListState;
+use crate::input::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crate::list::ListState;
 use resilience_core::admin::{self, AccountRow, AdminConfig, ModeState};
 use resilience_core::backup::{self, BackupFile};
 use resilience_core::catalog::{Availability, Catalog, Category};
@@ -31,8 +31,6 @@ use resilience_core::recovery;
 use resilience_core::status::{self, Snapshot, SystemState};
 use resilience_core::wifi::{self, Network, Overview};
 
-use crate::theme::Theme;
-
 #[path = "chat_ui.rs"]
 mod chat_ui;
 #[path = "crypto_ui.rs"]
@@ -51,23 +49,18 @@ mod share_ui;
 mod update_ui;
 pub use chat_ui::now_secs as chat_now;
 pub use chat_ui::{ChatInput, ChatRow, NearbyRow};
-#[cfg(test)]
 pub use crypto_ui::CRYPTO_LABEL;
 pub use crypto_ui::{Choice, EncryptTarget, KeyRow, Pick, Recipient};
 pub use files_ui::Table;
-#[cfg(test)]
 pub use install_ui::INSTALL_LABEL;
 pub use install_ui::{InstallForm, InstallInput, InstallRow};
-#[cfg(test)]
 pub use library::{ItemPlace, stick_items};
 pub use library::{LibItem, PackRow, PacksScreen};
 pub use licence_ui::LicencePage;
-#[cfg(test)]
 pub use share_ui::SET_SHARE_LABEL as SET_SHARE_LABEL_FOR_TESTS;
 pub use share_ui::{
     CommunityRow, PeerAction, PeerPack, SHARE_ROWS, ShareForm, ShareInput, service_label,
 };
-#[cfg(test)]
 pub use update_ui::update_rows as update_ui_rows;
 pub use update_ui::{UPDATE_APPLY_LABEL, UPDATE_CHECK_LABEL, UpdateRow};
 
@@ -979,7 +972,7 @@ pub enum Modal {
 }
 
 /// A program to run in the foreground with the terminal released.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RunRequest {
     pub label: String,
     pub argv: Vec<String>,
@@ -1032,7 +1025,7 @@ pub struct App {
     pub settings: UserSettings,
     pub settings_path: PathBuf,
     pub paths: Paths,
-    pub theme: Theme,
+    pub theme: ThemeName,
     pub snapshot: Snapshot,
     pub sys_state: SystemState,
     pub failed_units: Vec<String>,
@@ -1073,11 +1066,55 @@ pub struct Startup {
     pub warnings: Vec<String>,
 }
 
+/// Gather configuration. Problems become warnings shown inside the
+/// interface: a broken catalog must not prevent the interface from starting.
+impl Startup {
+    pub fn load() -> Startup {
+        let mut warnings = Vec::new();
+        let sys = match SystemConfig::load() {
+            Ok((c, path, found)) => {
+                if !found {
+                    warnings.push(format!(
+                        "{} not found; using built-in defaults",
+                        path.display()
+                    ));
+                }
+                c
+            }
+            Err(e) => {
+                warnings.push(format!("{e}; using built-in defaults"));
+                SystemConfig::default()
+            }
+        };
+        let catalog = match Catalog::load(&sys.catalog) {
+            Ok(c) => c,
+            Err(e) => {
+                warnings.push(format!("application catalog unavailable: {e}"));
+                Catalog::default()
+            }
+        };
+        let home = resilience_core::config::home_dir();
+        let settings_path = UserSettings::path(&resilience_core::config::config_home(&home));
+        let (settings, warn) = UserSettings::load(&settings_path);
+        warnings.extend(warn);
+        Startup {
+            sys,
+            catalog,
+            who: resilience_core::mode::detect(),
+            home,
+            settings,
+            settings_path,
+            paths: Paths::default(),
+            warnings,
+        }
+    }
+}
+
 impl App {
     pub fn new(s: Startup) -> App {
         let (probe_config, invalid) = s.sys.probe.to_probe_config();
         let mut app = App {
-            theme: Theme::new(s.settings.theme),
+            theme: s.settings.theme,
             snapshot: status::snapshot(&s.home),
             sys_state: SystemState::Unknown("not checked yet".into()),
             failed_units: Vec::new(),
@@ -1306,10 +1343,159 @@ impl App {
                     .map(SearchHit::Page),
             );
         }
+        // Names that start with the query first, then names that contain
+        // it, then matches in descriptions only ("recovery" opens Recovery
+        // & diagnostics, not the Handbook whose description mentions it).
+        let rank = |h: &SearchHit| {
+            let name = match h {
+                SearchHit::Category(c) => c.title().to_lowercase(),
+                SearchHit::Entry(Entry::Builtin(b)) => b.name().to_lowercase(),
+                SearchHit::Entry(Entry::App(i)) => self.catalog.apps[*i].name.to_lowercase(),
+                SearchHit::Page(p) => p.title.to_lowercase(),
+            };
+            if name.starts_with(&q) {
+                0
+            } else if name.contains(&q) {
+                1
+            } else {
+                2
+            }
+        };
+        hits.sort_by_key(|h| rank(h));
         hits
     }
 
     // ----- navigation -------------------------------------------------------
+
+    /// The selection of the current view, for the views a pointer can
+    /// choose rows in (the GUI, ADR 0026).
+    pub fn list_mut(&mut self) -> Option<&mut ListState> {
+        match self.stack.last_mut()? {
+            View::Home { list }
+            | View::Category { list, .. }
+            | View::Search { list, .. }
+            | View::Handbook { list, .. }
+            | View::Files { list, .. }
+            | View::Library { list, .. }
+            | View::Chats { list, .. }
+            | View::Nearby { list, .. }
+            | View::Chat { list, .. }
+            | View::Wifi { list, .. }
+            | View::Recovery { list }
+            | View::Users { list, .. }
+            | View::Media { list, .. }
+            | View::Generations { list, .. }
+            | View::Notes { list, .. }
+            | View::Updates { list, .. }
+            | View::Backups { list, .. }
+            | View::Community { list, .. }
+            | View::PeerMenu { list, .. }
+            | View::ChooseMode { list, .. }
+            | View::Choices { list, .. }
+            | View::Packs { list, .. }
+            | View::PackSets { list }
+            | View::PeerPacks { list, .. }
+            | View::PeerFiles { list, .. }
+            | View::ShareSetup { list, .. }
+            | View::Keys { list, .. }
+            | View::Settings { list } => Some(list),
+            _ => None,
+        }
+    }
+
+    /// The selected row of the current view (see [`App::list_mut`]).
+    pub fn selected_row(&self) -> Option<usize> {
+        match self.view() {
+            View::Home { list }
+            | View::Category { list, .. }
+            | View::Search { list, .. }
+            | View::Handbook { list, .. }
+            | View::Files { list, .. }
+            | View::Library { list, .. }
+            | View::Chats { list, .. }
+            | View::Nearby { list, .. }
+            | View::Chat { list, .. }
+            | View::Wifi { list, .. }
+            | View::Recovery { list }
+            | View::Users { list, .. }
+            | View::Media { list, .. }
+            | View::Generations { list, .. }
+            | View::Notes { list, .. }
+            | View::Updates { list, .. }
+            | View::Backups { list, .. }
+            | View::Community { list, .. }
+            | View::PeerMenu { list, .. }
+            | View::ChooseMode { list, .. }
+            | View::Choices { list, .. }
+            | View::Packs { list, .. }
+            | View::PackSets { list }
+            | View::PeerPacks { list, .. }
+            | View::PeerFiles { list, .. }
+            | View::ShareSetup { list, .. }
+            | View::Keys { list, .. }
+            | View::Settings { list } => list.selected(),
+            _ => None,
+        }
+    }
+
+    /// The scroll position of a text page (the renderer clamps it to the
+    /// lines it can show, as the TUI's does).
+    pub fn scroll_mut(&mut self) -> Option<&mut usize> {
+        match self.stack.last_mut()? {
+            View::Pager { scroll, .. }
+            | View::Status { scroll }
+            | View::Network { scroll }
+            | View::Help { scroll, .. } => Some(scroll),
+            _ => None,
+        }
+    }
+
+    /// Selects row `i` of the current view and activates it, exactly as
+    /// moving there and pressing Enter would.
+    pub fn choose_row(&mut self, i: usize) -> Effect {
+        if self.modal.is_some() {
+            return Effect::None;
+        }
+        match self.list_mut() {
+            Some(l) => l.select(Some(i)),
+            None => return Effect::None,
+        }
+        self.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+    }
+
+    /// Back to the main menu, as repeated Esc would (never past the
+    /// licence notice, which takes Esc itself).
+    pub fn go_home(&mut self) {
+        while self.stack.len() > 1 && self.modal.is_none() {
+            if matches!(self.view(), View::Licence { .. }) {
+                return;
+            }
+            let n = self.stack.len();
+            self.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            if self.stack.len() >= n {
+                return;
+            }
+        }
+    }
+
+    /// Opens Search (if needed) with `query` typed in it.
+    pub fn set_search(&mut self, query: &str) {
+        if self.modal.is_some() || matches!(self.view(), View::Licence { .. }) {
+            return;
+        }
+        let q: String = query.chars().take(64).collect();
+        let hits = self.search(&q);
+        let list = ListState::default().with_selected((!hits.is_empty()).then_some(0));
+        let v = View::Search {
+            query: q,
+            hits,
+            list,
+        };
+        match self.stack.last_mut() {
+            Some(top @ View::Search { .. }) => *top = v,
+            _ => self.push(v),
+        }
+    }
 
     pub fn view(&self) -> &View {
         self.stack.last().expect("view stack is never empty")
@@ -2102,7 +2288,7 @@ impl App {
                         .map(|n| {
                             format!(
                                 "{} {} {}",
-                                crate::ui::clock(n.at),
+                                crate::fmt::clock(n.at),
                                 level_tag(n.level),
                                 n.text
                             )
@@ -2369,7 +2555,7 @@ impl App {
 
     fn set_theme(&mut self, t: ThemeName) {
         self.settings.theme = t;
-        self.theme = Theme::new(t);
+        self.theme = t;
         match self.settings.save(&self.settings_path) {
             Ok(()) => self.notify(Level::Info, format!("Theme set to {}.", t.label())),
             Err(e) => self.notify(Level::Error, format!("Theme applied but not saved: {e}")),
@@ -2971,7 +3157,7 @@ impl App {
             return;
         }
         self.modal = Some(Modal::SetTime {
-            value: crate::ui::date_time(SystemTime::now()),
+            value: crate::fmt::date_time(SystemTime::now()),
             zone: clock::system_zone(),
             error: None,
         });
@@ -2996,8 +3182,8 @@ impl App {
                 return;
             }
         };
-        let now = crate::ui::date_time(SystemTime::now());
-        let new = crate::ui::date_time(SystemTime::UNIX_EPOCH + Duration::from_secs(utc as u64));
+        let now = crate::fmt::date_time(SystemTime::now());
+        let new = crate::fmt::date_time(SystemTime::UNIX_EPOCH + Duration::from_secs(utc as u64));
         let body = format!(
             "Set the clock to {new} ({zone})?\n\n\
              The clock now shows {now}. In UTC the new time is {}.\n\n\
@@ -3783,7 +3969,7 @@ impl App {
             g.number,
             g.nixos_version.as_deref().unwrap_or("unknown version"),
             g.created
-                .map(crate::ui::date_time)
+                .map(crate::fmt::date_time)
                 .unwrap_or_else(|| "?".into()),
         );
         if g.number < newest {
@@ -3881,7 +4067,7 @@ impl App {
                     "{:>4}  {:<16}  {:<24}  {}\n",
                     g.number,
                     g.created
-                        .map(crate::ui::date_time)
+                        .map(crate::fmt::date_time)
                         .unwrap_or_else(|| "?".into()),
                     g.nixos_version.as_deref().unwrap_or("?"),
                     marks.join(", ")

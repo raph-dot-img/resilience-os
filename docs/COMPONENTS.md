@@ -54,6 +54,13 @@ activity as known on 2026-11-14; re-check before each release.
 | ninvaders | 0.1.2 | GPL-2.0+ | https://ninvaders.sourceforge.net | yes | game |
 | moon-buggy | 1.1.0 | GPL-2.0-only | https://www.seehuhn.de/pages/moon-buggy | yes | game |
 | NetHack | 3.6.7 | NGPL | https://www.nethack.org | yes | game |
+| cage | 0.3.0 | MIT | https://github.com/cage-kiosk/cage | yes | GUI edition only (ADR 0026): Wayland kiosk on tty1, one full-screen client, `-s` keeps VT switching; built without Xwayland |
+| wlroots | 0.20.2 | MIT | https://gitlab.freedesktop.org/wlroots/wlroots | yes | GUI edition: cage's compositor library, pixman (CPU) renderer, `enableXWayland = false` |
+| libinput, libxkbcommon, Wayland, pixman | 1.31.3, 1.13.1, 1.25.0, 0.46.4 | MIT | https://freedesktop.org | yes | GUI edition: input, keymaps (XKB names from `keyboard::xkb_for`), protocol, software rendering |
+| foot | 1.27.0 | MIT | https://codeberg.org/dnkl/foot | yes | GUI edition: terminal window for programs started from the GUI (same argv, banner, pkttyagent as on the console) |
+| Inter | 4.1 | OFL-1.1 | https://rsms.me/inter | yes | GUI edition: interface font (InterVariable.ttf only, bundled) |
+| DejaVu fonts | 2.37 | Bitstream Vera / public domain | https://dejavu-fonts.github.io | yes | GUI edition: DejaVu Sans (glyph fallback), Sans Mono (text panel, foot) |
+| Resilience OS logos (`assets/logo/`) | 2026-11-21 | all rights reserved, unmodified use to refer to Resilience OS (`assets/logo/LICENSE`) | made by the project's owner | yes | GUI top bar (icon, drawn as vector), README, release pages |
 
 ## Rust crates (Cargo.lock, hash-pinned)
 
@@ -71,6 +78,18 @@ reuse bitflags and smallvec (already locked) and, at build time only, add
 cc, pkg-config, vcpkg, shlex and find-msvc-tools (MIT/Apache-2.0). 124
 packages in Cargo.lock including the workspace's own. `cargo deny check licenses advisories`
 is to be run before each release (cargo-deny is in the dev shell).
+
+**GUI edition (ADR 0026, `resilience-gui` only):** **iced 0.14.0** (MIT;
+`default-features = false`, features `tiny-skia`, `wayland`, `smol`,
+`crisp`: software rendering, no wgpu/Vulkan/OpenGL, no X11) with its
+winit, cosmic-text, tiny-skia, softbuffer, smithay-client-toolkit and smol
+dependencies, and serde_json 1 (MIT/Apache-2.0) for run requests. With
+them Cargo.lock has 344 registry packages; licences checked with `cargo
+metadata` on 2026-11-21: all MIT, Apache-2.0, BSD, ISC, Zlib, BSL-1.0,
+Unlicense or Unicode-3.0; the only GPL/LGPL appear as one choice of an
+`OR` (r-efi, one Apache-2.0 OR GPL-2.0-only crate) and the permissive one
+applies. The TUI package is built with `--exclude resilience-gui` and
+contains none of them.
 
 ## Evaluated, available in nixpkgs, planned
 

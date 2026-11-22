@@ -3,7 +3,7 @@
 #
 #   scripts/make-update-bundle.sh EDITION SECRET_KEY_FILE OUTDIR
 #
-# EDITION is standard or minimal. SECRET_KEY_FILE is the Resilience release
+# EDITION is standard, standard-gui or minimal. SECRET_KEY_FILE is the Resilience release
 # key (`nix key generate-secret`), kept offline: it is read by Nix to sign
 # and never copied. OUTDIR/resilience-update/ is created (it must not exist);
 # copy that folder to the root of a USB stick.
@@ -18,7 +18,7 @@ die() { echo "make-update-bundle: $*" >&2; exit 1; }
 
 [ $# -eq 3 ] || die "usage: $0 EDITION SECRET_KEY_FILE OUTDIR"
 edition=$1 key=$2 out=$3
-case $edition in standard | minimal) ;; *) die "EDITION is standard or minimal" ;; esac
+case $edition in standard | standard-gui | minimal) ;; *) die "EDITION is standard, standard-gui or minimal" ;; esac
 [ -f "$key" ] && [ -r "$key" ] || die "cannot read the secret key $key"
 # Yours, and no access for group or others (0600, 0400, or 0700 on a FAT
 # volume such as a VeraCrypt container mounted with fmask=0077).

@@ -60,6 +60,7 @@
           )
           [
             "standard"
+            "standard-gui"
             "minimal"
           ]
       );
@@ -129,6 +130,11 @@
           ./nix/systems/live-iso.nix
           (installerFor "standard")
         ];
+        live-standard-gui = mkSystem [
+          ./nix/profiles/standard-gui.nix
+          ./nix/systems/live-iso.nix
+          (installerFor "standard-gui")
+        ];
         live-minimal = mkSystem [
           ./nix/profiles/minimal.nix
           ./nix/systems/live-iso.nix
@@ -146,17 +152,20 @@
         inherit (pkgs)
           resilience
           resilience-session
+          resilience-gui
           resilience-handbook
           resilience-world-map
           ;
         default = pkgs.resilience;
         iso = self.nixosConfigurations.live-standard.config.system.build.isoImage;
         iso-minimal = self.nixosConfigurations.live-minimal.config.system.build.isoImage;
+        iso-gui = self.nixosConfigurations.live-standard-gui.config.system.build.isoImage;
         vm = self.nixosConfigurations.dev-vm.config.system.build.vm;
         # Offline update manifests (ADR 0023); bundles are made and signed
         # with scripts/make-update-bundle.sh.
         update-manifest-standard = updateManifest "standard";
         update-manifest-minimal = updateManifest "minimal";
+        update-manifest-standard-gui = updateManifest "standard-gui";
       };
 
       # `nix build .#mapPacks.<id>` -> result/map-osm-<id>_<YYYY-MM>.mbtiles.
@@ -201,6 +210,7 @@
         vm-cable = vmTest ./tests/vm/cable.nix;
         vm-update = vmTest ./tests/vm/update.nix;
         vm-licence = vmTest ./tests/vm/licence.nix;
+        vm-gui = vmTest ./tests/vm/gui.nix;
         # The messaging program with the real Reticulum and LXMF, no VM.
         comms-messages = pkgs.callPackage ./nix/packages/resilience-messages/check.nix {
           inherit reticulum messages;

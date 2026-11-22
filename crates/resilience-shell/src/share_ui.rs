@@ -18,8 +18,8 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::widgets::ListState;
+use crate::input::{KeyCode, KeyEvent, KeyModifiers};
+use crate::list::ListState;
 use resilience_core::admin::AdminConfig;
 use resilience_core::packs::{self, PackConfig, PackState};
 use resilience_core::proc::run_full;
@@ -168,7 +168,7 @@ impl App {
     }
 
     /// The line shown at the top of every screen while sharing (ADR 0025 §3).
-    pub(crate) fn sharing_banner(&self) -> Option<String> {
+    pub fn sharing_banner(&self) -> Option<String> {
         let s = self.share_state()?;
         Some(format!(
             "SHARING {} on {} as \"{}\". Stop: Communications > Community network.",
@@ -185,7 +185,7 @@ impl App {
         )
     }
 
-    pub(crate) fn community_rows(&self) -> Vec<CommunityRow> {
+    pub fn community_rows(&self) -> Vec<CommunityRow> {
         let mut rows = Vec::new();
         match self.share_state() {
             Some(s) => rows.push(CommunityRow::Sharing(s)),
@@ -397,7 +397,7 @@ impl App {
     /// In a shared folder (`files` or `pages`): how many files everyone
     /// may read (they are served) and how many are private (not served).
     /// Hidden files are never served and not counted.
-    pub(crate) fn shared_counts(&self, sub: &str) -> (usize, usize) {
+    pub fn shared_counts(&self, sub: &str) -> (usize, usize) {
         use std::os::unix::fs::PermissionsExt;
         let mut out = (0, 0);
         let Ok(d) = std::fs::read_dir(self.paths.shared_dir.join(sub)) else {

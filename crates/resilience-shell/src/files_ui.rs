@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use ratatui::widgets::ListState;
+use crate::list::ListState;
 use resilience_core::files::{self, Kind, MAX_TEXT};
 use resilience_core::human_bytes;
 use resilience_core::proc::run_full;
@@ -206,7 +206,7 @@ impl App {
         let modified = meta
             .ok()
             .and_then(|m| m.modified().ok())
-            .map(crate::ui::date_time)
+            .map(crate::fmt::date_time)
             .unwrap_or_else(|| "?".into());
         let p = path.to_string_lossy();
         let sha = if with_sha {

@@ -218,6 +218,7 @@ in
       type = types.enum [
         "minimal"
         "standard"
+        "standard-gui"
         "extended"
       ];
       default = "standard";

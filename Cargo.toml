@@ -2,7 +2,9 @@
 resolver = "3"
 members = [
   "crates/resilience-core",
+  "crates/resilience-shell",
   "crates/resilience-tui",
+  "crates/resilience-gui",
   "crates/resilience-admin",
   "crates/resilience-backup",
   "crates/resilience-library",
@@ -12,13 +14,14 @@ members = [
 ]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 license = "Hippocratic-2.1"
 rust-version = "1.89"
 
 [workspace.dependencies]
 resilience-core = { path = "crates/resilience-core" }
+resilience-shell = { path = "crates/resilience-shell" }
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1"

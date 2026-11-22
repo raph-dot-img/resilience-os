@@ -7,13 +7,8 @@
 //! resilience --version  print the version
 //! ```
 
-mod app;
-mod help;
-mod theme;
-mod ui;
-
 use std::fs;
-use std::io::{self, BufRead, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 use std::process::ExitCode;
@@ -25,11 +20,12 @@ use ratatui::crossterm::cursor::MoveTo;
 use ratatui::crossterm::event::{self, Event};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, enable_raw_mode};
-use resilience_core::catalog::{Availability, Catalog};
-use resilience_core::config::{self, SystemConfig, UserSettings};
-use resilience_core::{launch, mode, network, status};
+use resilience_core::catalog::Availability;
+use resilience_core::config;
+use resilience_core::{mode, network, status};
 
-use crate::app::{App, Effect, Paths, RunRequest, Startup};
+use resilience_tui::app::{App, Effect, RunRequest, Startup};
+use resilience_tui::{keys, ui};
 
 const USAGE: &str = "\
 Usage: resilience [COMMAND]
@@ -63,50 +59,8 @@ fn main() -> ExitCode {
     }
 }
 
-/// Gather configuration. Problems become warnings shown inside the
-/// interface: a broken catalog must not prevent the interface from starting.
-fn startup() -> Startup {
-    let mut warnings = Vec::new();
-    let sys = match SystemConfig::load() {
-        Ok((c, path, found)) => {
-            if !found {
-                warnings.push(format!(
-                    "{} not found; using built-in defaults",
-                    path.display()
-                ));
-            }
-            c
-        }
-        Err(e) => {
-            warnings.push(format!("{e}; using built-in defaults"));
-            SystemConfig::default()
-        }
-    };
-    let catalog = match Catalog::load(&sys.catalog) {
-        Ok(c) => c,
-        Err(e) => {
-            warnings.push(format!("application catalog unavailable: {e}"));
-            Catalog::default()
-        }
-    };
-    let home = config::home_dir();
-    let settings_path = UserSettings::path(&config::config_home(&home));
-    let (settings, warn) = UserSettings::load(&settings_path);
-    warnings.extend(warn);
-    Startup {
-        sys,
-        catalog,
-        who: mode::detect(),
-        home,
-        settings,
-        settings_path,
-        paths: Paths::default(),
-        warnings,
-    }
-}
-
 fn cli_status() -> ExitCode {
-    let s = startup();
+    let s = Startup::load();
     let snap = status::snapshot(&s.home);
     let net = network::passive_state();
     let state = status::system_state();
@@ -153,7 +107,7 @@ fn cli_status() -> ExitCode {
 }
 
 fn cli_apps() -> ExitCode {
-    let s = startup();
+    let s = Startup::load();
     let mode = s.who.mode;
     for a in &s.catalog.apps {
         let avail = if !mode.allows(a.min_mode) {
@@ -210,7 +164,7 @@ fn run_interactive() -> ExitCode {
         );
         return ExitCode::from(2);
     }
-    let s = startup();
+    let s = Startup::load();
     init_logging(&s.home);
     tracing::info!(version = resilience_core::VERSION, user = %s.who.user, mode = %s.who.mode, "interface starting");
 
@@ -245,7 +199,7 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<()> {
         terminal.draw(|f| ui::draw(f, app))?;
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
-                Event::Key(k) => match app.handle_key(k) {
+                Event::Key(k) => match app.handle_key(keys::from_crossterm(k)) {
                     Effect::None => {}
                     Effect::Quit => return Ok(()),
                     Effect::Run(req) => run_program(terminal, app, &req)?,
@@ -262,29 +216,7 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<()> {
 /// Release the terminal, run a program in the foreground, take it back.
 fn run_program(terminal: &mut DefaultTerminal, app: &mut App, req: &RunRequest) -> io::Result<()> {
     ratatui::restore();
-    let mut out = io::stdout();
-    // Clear the screen so the program starts on a clean console.
-    let _ = write!(out, "\x1b[2J\x1b[H");
-    if let Some(b) = &req.banner {
-        let _ = writeln!(out, "{b}\n");
-    }
-    let _ = out.flush();
-    let extra: Vec<&std::ffi::OsStr> = req.extra_args.iter().map(|p| p.as_os_str()).collect();
-    let result = match &req.polkit_agent {
-        Some(agent) => launch::run_with_polkit_agent(agent, &req.argv, &req.env),
-        None => launch::run_foreground_env(&req.argv, &extra, &req.env, req.clean_env),
-    };
-    let failed = !matches!(&result, Ok(st) if st.success());
-    if req.pause_after || failed {
-        match &result {
-            Ok(st) if !st.success() => println!("\n[{} exited with {st}]", req.label),
-            Err(e) => println!("\n[{} could not start: {e}]", req.label),
-            _ => {}
-        }
-        print!("\nPress Enter to return to Resilience...");
-        let _ = io::stdout().flush();
-        let _ = io::stdin().lock().read_line(&mut String::new());
-    }
+    let result = resilience_tui::run_foreground(req);
     app.after_run(&req.label, &result);
     enable_raw_mode()?;
     // Clear without `Terminal::clear`: it asks the terminal for the cursor
@@ -302,6 +234,3 @@ fn run_program(terminal: &mut DefaultTerminal, app: &mut App, req: &RunRequest) 
     terminal.swap_buffers();
     Ok(())
 }
-
-#[cfg(test)]
-mod tests;

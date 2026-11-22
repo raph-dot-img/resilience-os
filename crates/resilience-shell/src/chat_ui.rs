@@ -17,8 +17,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::widgets::ListState;
+use crate::input::{KeyCode, KeyEvent, KeyModifiers};
+use crate::list::ListState;
 use resilience_core::messages::{
     self, Conversation, MAX_NAME_CHARS, Name, Peer, Record, Status, Store,
 };
@@ -571,7 +571,7 @@ impl App {
 
     /// Whether an entry is shown on this computer: Local messages only
     /// with the messaging service, the mesh only where the system offers it.
-    pub(crate) fn builtin_present(&self, b: Builtin) -> bool {
+    pub fn builtin_present(&self, b: Builtin) -> bool {
         match b {
             Builtin::Chat => self.paths.comms_client.exists(),
             Builtin::Mesh => self.mesh_config().is_some(),

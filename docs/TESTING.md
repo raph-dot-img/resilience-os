@@ -109,6 +109,29 @@ which corrupts text next to box-drawing characters with our console font.
 | 14 | TUI crash (SIGABRT) → session wrapper shows diagnostics, restarts | PASS |
 | — | No listening TCP/UDP sockets | PASS |
 
+### VM: `vm-gui` — graphical edition (ADR 0026), driven with the keyboard, read by OCR (2026-11-21, `feat/gui`)
+
+| # | Scenario | Result |
+|---|---|---|
+| — | tty1 autologin starts cage + resilience-gui (no TUI on tty1); home tiles read by OCR | PASS |
+| — | Idle memory, cage + GUI: 43.6 MiB RSS (cage 18.2, GUI 25.3; target 150 MB) | PASS |
+| — | Enter opens a section, then the handbook (text panel inside the GUI); Esc twice back home | PASS |
+| — | `/` + typing searches natively; Enter starts the unit converter in foot; Ctrl-D returns to the GUI; no run request file left | PASS |
+| — | Ctrl+Alt+F2 reaches tty2 (text login), Ctrl+Alt+F1 back | PASS |
+| — | GUI killed three times → the TUI starts on tty1, cage gone | PASS |
+| — | Screenshots looked at (home, handbook panel, search, program in foot) | PASS |
+| — | Native handbook: list, then a guide in the reading view (OCR), Esc back home | PASS |
+| — | Size: installed-standard-gui-uefi-plain closure 2485.7 MiB vs installed-standard-uefi-plain 2427.1 MiB: +58.6 MiB (target 60; was +79.7 before the fonts were copied instead of linked) | PASS |
+| — | Native offline library and Find files (`/view files`, typed query, OCR "field-notes") | PASS (2026-11-21) |
+| — | Native Local messages: "Messaging is on", `p` opens People nearby, Esc back home | PASS (2026-11-21) |
+| — | Native dialog: `q` asks "Log out", Enter keeps the default Cancel, the GUI stays up | PASS (2026-11-21, run 8 at `b29e2ae`: 9/9 subtests) |
+| — | Native screens for packs, keys, pack sets, nearby computer packs/files, sharing setup, status/network pages: drawn in the development preview (`scripts/gui-preview.sh`; packs, keys, Encrypt for and network pages looked at) | PASS (preview only, not in the VM) |
+| — | Full run at `7ceaeed` (2026-11-22): all 27 checks + live-standard, live-standard-gui, live-minimal toplevels, one eval per derivation | PASS |
+| — | ISO `iso-gui` at `f5e46c8` (1.67 GB, still named 0.6.0 before the bump) boots in QEMU, BIOS and UEFI (`tests/iso/smoke.py`): boot menu, licence notice in the GUI, home, network, status, search, Local messages "Messaging is on"; screenshots looked at | PASS (2026-11-22) |
+| — | After the independent review's 10 fixes: vm-gui, vm-update, vm-boot-offline, security-invariants | PASS (2026-11-22) |
+| — | 0.7.0 ISOs built at `097698e` (standard-gui 1.67 GB, standard 1.65 GB, minimal 1.63 GB); standard-gui boots in QEMU, BIOS and UEFI, licence recorded, home shows the 8 sections | PASS (2026-11-22) |
+| — | Real hardware, touchpad/mouse clicks | NOT TESTED |
+
 ### VM: `vm-modes` — isolated VLAN, three accounts
 
 | Check | Result |
