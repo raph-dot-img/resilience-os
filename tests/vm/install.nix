@@ -12,7 +12,7 @@
 # vdb. The person chooses vda, the French keyboard, encryption (on for
 # BIOS, off for UEFI), the two proposed accounts, confirms by typing "vda",
 # then types the passphrase and passwords into cryptsetup and passwd.
-# `target` then boots that disk. BIOS: through GRUB; the passphrase is
+# `target` then boots that disk (BIOS: then `target_uefi` boots it with OVMF). BIOS: through GRUB; the passphrase is
 # typed on the keyboard at the initrd's prompt, which only works if the
 # initrd loaded the same French layout as the installer did (q/a, z/w and
 # m sit on other keys).
@@ -49,6 +49,20 @@ let
     virtualisation.memorySize = 2048;
     virtualisation.cores = 2;
   };
+  target = efi: {
+    imports = [ disk ];
+    virtualisation.useBootLoader = true;
+    virtualisation.useEFIBoot = efi;
+    # An empty variable store from the OVMF template (not one from a disk
+    # image of this VM: the disk is the one the installer wrote).
+    virtualisation.efi.keepVariables = false;
+    virtualisation.useDefaultFilesystems = false;
+    virtualisation.fileSystems."/" = {
+      device = "/dev/disk/by-label/unused-the-installed-system-mounts-its-own";
+      fsType = "ext4";
+    };
+    virtualisation.qemu.networkingOptions = lib.mkForce [ "-nic none" ];
+  };
 in
 {
   name = "resilience-install-${firmware}";
@@ -82,20 +96,9 @@ in
       nix.settings.substituters = lib.mkForce [ ];
     };
 
-  nodes.target = {
-    imports = [ disk ];
-    virtualisation.useBootLoader = true;
-    virtualisation.useEFIBoot = uefi;
-    # An empty variable store from the OVMF template (not one from a disk
-    # image of this VM: the disk is the one the installer wrote).
-    virtualisation.efi.keepVariables = false;
-    virtualisation.useDefaultFilesystems = false;
-    virtualisation.fileSystems."/" = {
-      device = "/dev/disk/by-label/unused-the-installed-system-mounts-its-own";
-      fsType = "ext4";
-    };
-    virtualisation.qemu.networkingOptions = lib.mkForce [ "-nic none" ];
-  };
+  nodes.target = target uefi;
+  # BIOS variant: the same disk started again by OVMF (hybrid install, 0.7.1).
+  nodes.target_uefi = target true;
 
   testScript = ''
     import base64, re, time as _time
@@ -239,6 +242,24 @@ in
         # The login prompts use the French layout (keycode 16 is a, not q).
         target.wait_for_unit("getty@tty1.service")
         target.wait_until_succeeds("dumpkeys -k 2>/dev/null | grep -E '^keycode +16 = +\\+?a\\b'", timeout=30)
+
+    if not UEFI:
+        with subtest("the BIOS-installed disk also starts in UEFI mode (hybrid GRUB)"):
+            target.succeed("test -s /boot/EFI/BOOT/BOOTX64.EFI")
+            target.succeed("test -d /boot/grub/i386-pc")
+            target.shutdown()
+            target_uefi.state_dir = installer.state_dir
+            target_uefi.start()
+            _time.sleep(40)
+            target_uefi.send_chars(PASSPHRASE + "\n")
+            target_uefi.wait_for_unit("multi-user.target", timeout=600)
+            target_uefi.succeed("test -d /sys/firmware/efi")
+            target_uefi.succeed("findmnt -no SOURCE / | grep -x /dev/mapper/root")
+            target_uefi.shutdown()
+            target.start()
+            _time.sleep(40)
+            target.send_chars(PASSPHRASE + "\n")
+            target.wait_for_unit("multi-user.target", timeout=600)
 
     with subtest("local accounts with their modes; no autologin; sandbox on"):
         target.succeed("getent passwd user | grep -F ':/run/current-system/sw/bin/resilience-session'")

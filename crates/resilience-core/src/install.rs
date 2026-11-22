@@ -164,7 +164,7 @@ impl Firmware {
     pub fn label(self) -> &'static str {
         match self {
             Firmware::Uefi => "UEFI (systemd-boot)",
-            Firmware::Bios => "BIOS / legacy (GRUB)",
+            Firmware::Bios => "BIOS / legacy, and UEFI as a fallback (GRUB)",
         }
     }
 }
