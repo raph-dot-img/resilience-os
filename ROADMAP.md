@@ -290,7 +290,7 @@ decided by the owner on 2026-11-20: release 0.7.0, after maps (0.6.0).
   the service unprivileged and stopped after use; a model file with a
   wrong hash refused.
 
-## Phase 5b — Build your own map ⬜ (requested 2026-11-21; release 0.7.1, owner 2026-11-21)
+## Phase 5b — Build your own map 🔄 (requested 2026-11-21; release 0.7.1, owner 2026-11-21)
 Catalog map packs are rebuilt once a year (release checklist); users update or add regions themselves:
 - Maps → "Make or update a map": region list shipped offline (Geofabrik index, size + RAM needed),
   disk/RAM check before starting, `.osm.pbf` download on request only (HTTPS, Geofabrik checksum,
@@ -298,11 +298,18 @@ Catalog map packs are rebuilt once a year (release checklist); users update or a
   (osmium + tippecanoe + resilience-mapmaker, no Nix), result in the user's maps, data date shown.
 - Optional sea fill (OSM water polygons ~800 MB + GDAL); without it coastal maps keep their coastline.
 - Standard edition only (+30-50 MB). ADR 0016 amendment, threat model entry, VM test on the test region.
+- Done on `feat/0.7.1` (2026-11-22): `resilience-mapmaker make`, Maps → "Make or update a map"
+  (TUI and GUI), ~/Maps listed as "Made here", ADR 0016 §10, T52, handbook, `vm-mapmaker`.
+  Without the sea (optional, left out: 909 MB input + GDAL) and without `osmium tags-filter`
+  (2.2 GB fixed cost; export from the extract gives the same features).
 - Also in 0.7.1 (owner, 2026-11-22): hybrid BIOS+UEFI install. A computer that starts the
   stick in legacy mode (Ventoy, or "Both"/CSM firmware) got a BIOS-only GRUB and then could not
   start the disk in UEFI mode (ThinkPad Yoga 11e, 2026-11-22). Every BIOS install also gets GRUB
   for EFI as the removable fallback `EFI/BOOT/BOOTX64.EFI` (new installed variant, update
   bundles too); vm-install boots the BIOS-installed disk in UEFI mode.
+  Done differently (2026-11-22): no new variant is needed. The BIOS layout already has an EFI
+  system partition, so the BIOS variant itself installs GRUB for EFI as the removable fallback
+  (`efiSupport` + `efiInstallAsRemovable`); BIOS systems of 0.7.0 get it with the update.
 
 ## Phase 12b — Graphical edition, native screens ⬜ (owner 2026-11-22; releases 0.7.2 and 0.7.3)
 Programs that still open in a terminal window or in the text style become native GUI screens.
