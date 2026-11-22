@@ -769,7 +769,13 @@ See ROADMAP.md. Current: 0.6.0 (maps) is published (2026-11-21). Before: 0.5.0 i
 (2026-11-20); maps (Phase 5, slices 10-13; the TUI stop after quitting a
 program, found 2026-11-20, is fixed on `feat/maps-search`) for 0.6.0
 (owner, 2026-11-19). Release
-0.7.0 (owner, 2026-11-21): GUI edition (ADR 0026 accepted, branch `feat/gui`). Release
+0.7.0 (GUI edition, ADR 0026) is RELEASED (2026-11-22): tag `v0.7.0` on `main`
+`21d163c`, release folder signed by the owner (`make-release.sh --minimal --gui`),
+ISOs identical to the ones booted in QEMU, published on the mirror with `LATEST` =
+0.7.0, torrent and GitHub release. Hardware: MSI GL73 install OK; Yoga 11e live OK,
+installed system does not start (stick starts in legacy mode -> BIOS-only GRUB);
+L15 live OK. Next: 0.7.1 = build your own map + hybrid BIOS+UEFI install;
+0.7.2-0.7.3 = native GUI screens (ROADMAP Phase 12b). Release
 0.8.0: Phase 11, offline assistant (local model via Ollama or
 llama.cpp, models as hash-pinned packs, answers grounded in the
 libraries and handbook with sources); ADR first; not started. Release 0.7.1
