@@ -240,7 +240,7 @@ on Phase 6 (mesh, ADR 0021; Reticulum announces, ADR 0018), resource packs
 Independent architecture and security reviews, `cargo deny`, license audit,
 SBOM, physical hardware tests, release notes.
 
-## Phase 12 — Graphical edition (GUI) ⬜ (requested 2026-11-21; release 0.7.0, owner 2026-11-21)
+## Phase 12 — Graphical edition (GUI) ✅ 0.7.0 (requested 2026-11-21; release 0.7.0, owner 2026-11-21; native screens continue in 0.7.2-0.7.3)
 A second edition with a very light, minimalist, intuitive graphical interface:
 cage (Wayland kiosk) + `resilience-gui` (Rust, iced), sharing one state machine
 (`resilience-shell`) with the TUI. The TUI edition stays. See ADR 0026 (slices listed there).
@@ -298,6 +298,19 @@ Catalog map packs are rebuilt once a year (release checklist); users update or a
   (osmium + tippecanoe + resilience-mapmaker, no Nix), result in the user's maps, data date shown.
 - Optional sea fill (OSM water polygons ~800 MB + GDAL); without it coastal maps keep their coastline.
 - Standard edition only (+30-50 MB). ADR 0016 amendment, threat model entry, VM test on the test region.
+- Also in 0.7.1 (owner, 2026-11-22): hybrid BIOS+UEFI install. A computer that starts the
+  stick in legacy mode (Ventoy, or "Both"/CSM firmware) got a BIOS-only GRUB and then could not
+  start the disk in UEFI mode (ThinkPad Yoga 11e, 2026-11-22). Every BIOS install also gets GRUB
+  for EFI as the removable fallback `EFI/BOOT/BOOTX64.EFI` (new installed variant, update
+  bundles too); vm-install boots the BIOS-installed disk in UEFI mode.
+
+## Phase 12b — Graphical edition, native screens ⬜ (owner 2026-11-22; releases 0.7.2 and 0.7.3)
+Programs that still open in a terminal window or in the text style become native GUI screens.
+- 0.7.2: native map viewer (vector drawing from `resilience-core::maps`, smooth zoom, mouse drag,
+  search, nearby, go-to), notes with a built-in editor (vim/nano stay for experts).
+- 0.7.3: native installer, licence notice and table viewer; native polkit password dialog
+  (ADR 0026 amendment + security review); a few native games (solitaire, minesweeper, sudoku).
+- Terminal tools (htop, lynx, units...) keep the foot window.
 
 ## Phase 13 — Media and translation ⬜ (requested 2026-11-21; release 0.9.0, owner 2026-11-21)
 All offline, the same screens in the TUI and the GUI (resilience-shell), ADR first.

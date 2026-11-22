@@ -50,6 +50,12 @@ on real hardware.
 - A keyboard layout chosen in Settings applies to the graphical
   interface only after logging out and in again.
 - Password prompts of administrator actions open in a terminal window.
+- Real hardware (owner, 2026-11-22): MSI GL73 8SE live system and
+  installation work. ThinkPad L15 live system works (installation not
+  tried). ThinkPad Yoga 11e live system works, but the installed system
+  does not start: the stick starts in legacy mode, the installer then
+  sets up a BIOS-only boot loader, and the firmware looks for a UEFI one.
+  Fix planned for 0.7.1 (boot loaders for both modes on every install).
 
 ## [0.6.0] — 2026-11-21 — Offline maps
 

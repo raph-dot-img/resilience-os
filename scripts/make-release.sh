@@ -20,6 +20,7 @@
 #
 # Options:
 #   --minimal            also publish the minimal edition
+#   --gui                also publish the graphical edition (standard-gui)
 #   --update-key FILE    also make each edition's offline update bundle
 #                        (scripts/make-update-bundle.sh, Nix release key)
 #   --sign FILE          sign SHA256SUMS with this minisign secret key
@@ -132,10 +133,11 @@ EOF
   chmod 644 "$out/README.txt"
 }
 
-minimal=0 updatekey="" sign="" untagged=0 resign="" index=0
+minimal=0 gui=0 updatekey="" sign="" untagged=0 resign="" index=0
 while [ $# -gt 0 ]; do
   case $1 in
     --minimal) minimal=1 ;;
+    --gui) gui=1 ;;
     --update-key) updatekey=${2:?}; shift ;;
     --sign) sign=${2:?}; shift ;;
     --allow-untagged) untagged=1 ;;
@@ -162,7 +164,7 @@ if [ $index = 1 ]; then
   exit 0
 fi
 
-[ $# -eq 2 ] || die "usage: $0 [--minimal] [--update-key FILE] [--sign FILE] [--allow-untagged] VERSION OUTDIR"
+[ $# -eq 2 ] || die "usage: $0 [--minimal] [--gui] [--update-key FILE] [--sign FILE] [--allow-untagged] VERSION OUTDIR"
 version=$1 out=$(realpath -m "$2")
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "VERSION must look like 1.2.3"
 dest=$out/releases/$version
@@ -178,6 +180,7 @@ else
 fi
 
 editions=(standard)
+[ $gui = 0 ] || editions+=(standard-gui)
 [ $minimal = 0 ] || editions+=(minimal)
 for ed in "${editions[@]}"; do
   v=$(nix eval --raw ".#nixosConfigurations.live-$ed.config.resilience.version")
@@ -192,7 +195,7 @@ trap 'rm -rf "$work"' EXIT
 
 for ed in "${editions[@]}"; do
   attr=iso
-  [ "$ed" = standard ] || attr=iso-$ed
+  case $ed in standard) ;; standard-gui) attr=iso-gui ;; *) attr=iso-$ed ;; esac
   say "Building the $ed ISO (long)"
   p=$(nix build --no-link --print-out-paths ".#$attr")
   name=resilience-$ed-$version-x86_64-linux.iso
