@@ -704,3 +704,13 @@ modest machine running the live ISO has little room for files.
 | — | Installer, rollback to previous generation | BLOCKED — no installer yet |
 | — | Recovery section with real generations; diagnostic report on a real system | NOT TESTED in VM (unit/TUI tests with fake profiles only) |
 | — | Backup / restore with a physical USB stick | NOT TESTED (QEMU usb-storage only) |
+
+## 0.7.1 work (branch `feat/0.7.1`, 2026-11-22)
+
+| Test | Result |
+|---|---|
+| `vm-install` (BIOS + LUKS + fr) with the new subtest: the BIOS-installed disk started by OVMF (empty variable store) through GRUB's removable fallback `EFI/BOOT/BOOTX64.EFI`, passphrase typed, multi-user reached, then BIOS again | PASS |
+| `vm-mapmaker`: Maps → Make or update a map through the TUI, a fake download.geofabrik.de over HTTPS (latest → dated redirect, .md5, .poly), the builder asks first, a partial download resumed (206 from byte 500), map built into ~/Maps as alice and `info --check` integrity ok, "Made here" in the maps list, a wrong MD5 refused and the part deleted, an extract without .poly or header box (data box used), unknown region refused | PASS (after fixes: test-script typing, partial larger than the test extract, data-box fallback) |
+| Host run: `make --region luxembourg` against the real Geofabrik (48 MB, data 2026-11-21): download, MD5, 30 MB map, `info --check` ok; first 2.25 GB peak (osmium tags-filter), after dropping it 183 MB peak, 35 s; from a file (rectangle) likewise | PASS |
+| `cargo test --workspace`, `cargo clippy --all-targets` | PASS |
+| GUI preview of the new screen (filter, "made here" marker) | looked at |
