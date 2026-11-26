@@ -69,6 +69,21 @@ WHICH MAPS ARE HERE
   file that is not in the list cannot be checked: the map viewer still
   reads it carefully and says "not checked".
 
+MAKING OR UPDATING A MAP
+  MAPS & NAVIGATION > Make or update a map builds a detailed map of a
+  region on this computer, with OpenStreetMap data of the day. Type part
+  of the region's name (a country, or a region of a large country), then
+  Enter. Nothing is downloaded yet: the computer asks Geofabrik, the site
+  that publishes the extracts, for the size, then says how much disk
+  space and memory the work needs, and asks. Type y to start.
+  The download goes on where it stopped if it is interrupted: start
+  again. The map is built on this computer (a few minutes for a small
+  country, an hour or more for a large region; the computer stays
+  usable) and kept in the folder Maps of your home. Making it again
+  later replaces it with fresher data. An extract (.osm.pbf) on an open
+  USB stick is listed first: no network is needed then.
+  Maps made here show the sea of the world overview, not their own.
+
 KEEP IN MIND
   A map can be wrong, incomplete or out of date. OpenStreetMap is made by
   volunteers: a road, a bridge or a water point absent from the map may

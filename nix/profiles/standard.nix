@@ -12,4 +12,6 @@
   # Sharing offline resources with nearby machines (ADR 0025): offered,
   # but nothing is shared until an administrator turns it on.
   resilience.share.enable = lib.mkDefault true;
+  # Making maps of any region (ROADMAP Phase 5b, owner 2026-11-21).
+  resilience.mapmaker.enable = lib.mkDefault true;
 }

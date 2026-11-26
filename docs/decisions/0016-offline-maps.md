@@ -670,6 +670,52 @@ Later and optional:
 - the routing prototype ADR (§6);
 - making small regions on the target machine (open question 2).
 
+### 10. Maps made on this computer (amendment, 2026-11-22, release 0.7.1)
+
+Catalog packs are rebuilt once a year; people need fresher or other
+regions. Maps & navigation → **Make or update a map** builds one on the
+computer itself (ROADMAP Phase 5b, owner 2026-11-21):
+
+- **Regions**: Geofabrik's index (`index-v1-nogeom.json`) reduced to id,
+  name, parent, extract and boundary URLs by `scripts/map-regions.py`
+  into `nix/maps/regions.json` (554 regions, 134 KB), shipped in the
+  system; ids with `/` become `-` (`us-texas`). Every entry is checked
+  when read: ids `[a-z0-9-]`, URLs under `https://download.geofabrik.de/`
+  only, no `..`.
+- **Getting the extract**: only after the person chose a region and
+  pressed Enter. A HEAD request gives the dated file the "latest" name
+  redirects to and its size; the builder then says what it needs and asks
+  (`Start? [y/N]`). curl `--proto =https --proto-redir =https`, resumed
+  (`--continue-at -`) into `~/.cache/resilience/maps/NAME.part`, checked
+  against Geofabrik's `.md5` (integrity against damage; authenticity
+  rests on HTTPS, as for the catalog's sources) and deleted on a
+  mismatch. Or an `.osm.pbf` on a USB stick (or any file), read in place;
+  its `.poly` beside it, else the rectangle of its header.
+- **Building**: `resilience-mapmaker make`, in the foreground as the
+  person, the same steps and options as the catalog packs (§2) except
+  `osmium tags-filter`, whose ID sets take about 2.2 GB whatever the
+  region; `osmium export` straight from the extract gives the same
+  features and rows (Luxembourg, 2026-11-22: identical sorted output;
+  peak 183 MB instead of 2.2 GB, 35 s on an i3-6100). No sea (its input
+  is 909 MB and needs GDAL): coastal maps keep their coastline lines over
+  the overview's sea. Absolute tool paths from the root-owned
+  `/etc/resilience/mapmaker.toml`, a clean environment,
+  `oom_score_adj` 1000 (the kernel stops the build first if memory runs
+  out). Refused above 2 GiB of extract, or with less than 12 times the
+  extract in free disk or 6 times it in memory (at least 200 MB and
+  512 MB).
+- **Result**: `~/Maps/map-osm-ID_YYYY-MM.mbtiles` (written as a hidden
+  `.partial`, renamed when `finish` has checked it); an older map of the
+  same region is removed afterwards; the downloaded extract is deleted.
+  Listed as "Made here" in the maps list and opened with the installed
+  packs. They are the person's own files: not checked against a catalog,
+  read by the same hardened reader as a stick's.
+- **Where**: standard edition (`resilience.mapmaker.enable`, mkDefault
+  on): osmium-tool and tippecanoe join the system. Tests: unit tests
+  (region list, needs, names, formats), the TUI flow test, `vm-mapmaker`
+  (a fake download.geofabrik.de over HTTPS: resumed download, MD5
+  refusal, a file without its `.poly`).
+
 ## Alternatives considered
 
 - **PMTiles** (Protomaps; pmtiles 1.31.1 in nixpkgs, BSD-3):

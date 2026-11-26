@@ -6,6 +6,26 @@ Git tags: `vX.Y.Z` on the commit of each release.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-11-26 — Make your own map, BIOS+UEFI install
+
+### Added
+- Make or update a map (Maps & navigation): any of Geofabrik's 554
+  regions, downloaded when you agree (HTTPS, resumed, checksum) or an
+  extract from a USB stick, built on the computer into the folder Maps
+  (standard editions; ADR 0016 §10). Luxembourg takes 35 s and 183 MB of
+  memory on a 2016 laptop.
+
+### Fixed
+- Installing in BIOS mode now also puts GRUB for UEFI on the disk, as the
+  removable fallback: a computer that started the stick in legacy mode
+  (Ventoy, or firmware set to "Both") can then start the disk in UEFI
+  mode (ThinkPad Yoga 11e, found on 0.7.0). Systems already installed in
+  BIOS mode get it with the 0.7.1 offline update.
+
+### Tested
+- Real hardware (owner, 2026-11-26): several Dell OptiPlex Micro 7020,
+  everything works.
+
 ## [0.7.0] — 2026-11-22 — Graphical edition
 
 A new edition, **standard-gui**: the same system with a modern,

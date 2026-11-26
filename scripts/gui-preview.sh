@@ -64,6 +64,10 @@ mkdir -p "$run/home/Documents" "$run/home/Notes"
 cp LICENSE README.md "$run/home/Documents/" 2>/dev/null || true
 cp handbook/*.md "$run/home/Notes/"
 cp assets/logo/resilience-logo.png "$run/home/Documents/" 2>/dev/null || true
+# Map making: the real region list, a made map.
+printf 'program = "/bin/false"\nregions = "%s"\nexport_config = "/e"\nosmium = "/o"\ntippecanoe = "/t"\ncurl = "/c"\nmd5sum = "/m"\ntools = "x"\n' "$PWD/nix/maps/regions.json" > "$run/mapmaker.toml"
+export RESILIENCE_MAPMAKER_CONFIG="$run/mapmaker.toml"
+mkdir -p "$run/home/Maps"; : > "$run/home/Maps/map-osm-bretagne_2026-11.mbtiles"
 export HOME="$run/home"
 export XDG_RUNTIME_DIR="$run" WLR_BACKENDS=headless WLR_RENDERER=pixman \
   WLR_HEADLESS_OUTPUTS=1 WLR_LIBINPUT_NO_DEVICES=1 \

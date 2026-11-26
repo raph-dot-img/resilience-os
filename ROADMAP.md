@@ -290,7 +290,7 @@ decided by the owner on 2026-11-20: release 0.7.0, after maps (0.6.0).
   the service unprivileged and stopped after use; a model file with a
   wrong hash refused.
 
-## Phase 5b — Build your own map ⬜ (requested 2026-11-21; release 0.7.1, owner 2026-11-21)
+## Phase 5b — Build your own map 🔄 (requested 2026-11-21; release 0.7.1, owner 2026-11-21)
 Catalog map packs are rebuilt once a year (release checklist); users update or add regions themselves:
 - Maps → "Make or update a map": region list shipped offline (Geofabrik index, size + RAM needed),
   disk/RAM check before starting, `.osm.pbf` download on request only (HTTPS, Geofabrik checksum,
@@ -298,11 +298,18 @@ Catalog map packs are rebuilt once a year (release checklist); users update or a
   (osmium + tippecanoe + resilience-mapmaker, no Nix), result in the user's maps, data date shown.
 - Optional sea fill (OSM water polygons ~800 MB + GDAL); without it coastal maps keep their coastline.
 - Standard edition only (+30-50 MB). ADR 0016 amendment, threat model entry, VM test on the test region.
+- Done on `feat/0.7.1` (2026-11-22): `resilience-mapmaker make`, Maps → "Make or update a map"
+  (TUI and GUI), ~/Maps listed as "Made here", ADR 0016 §10, T52, handbook, `vm-mapmaker`.
+  Without the sea (optional, left out: 909 MB input + GDAL) and without `osmium tags-filter`
+  (2.2 GB fixed cost; export from the extract gives the same features).
 - Also in 0.7.1 (owner, 2026-11-22): hybrid BIOS+UEFI install. A computer that starts the
   stick in legacy mode (Ventoy, or "Both"/CSM firmware) got a BIOS-only GRUB and then could not
   start the disk in UEFI mode (ThinkPad Yoga 11e, 2026-11-22). Every BIOS install also gets GRUB
   for EFI as the removable fallback `EFI/BOOT/BOOTX64.EFI` (new installed variant, update
   bundles too); vm-install boots the BIOS-installed disk in UEFI mode.
+  Done differently (2026-11-22): no new variant is needed. The BIOS layout already has an EFI
+  system partition, so the BIOS variant itself installs GRUB for EFI as the removable fallback
+  (`efiSupport` + `efiInstallAsRemovable`); BIOS systems of 0.7.0 get it with the update.
 
 ## Phase 12b — Graphical edition, native screens ⬜ (owner 2026-11-22; releases 0.7.2 and 0.7.3)
 Programs that still open in a terminal window or in the text style become native GUI screens.
@@ -311,6 +318,26 @@ Programs that still open in a terminal window or in the text style become native
 - 0.7.3: native installer, licence notice and table viewer; native polkit password dialog
   (ADR 0026 amendment + security review); a few native games (solitaire, minesweeper, sudoku).
 - Terminal tools (htop, lynx, units...) keep the foot window.
+
+## Phase 12c — Start-up and login look ⬜ (proposed 2026-11-22; release 0.7.4, after the native screens)
+One visual identity from power-on to the session (GUI edition first; the text editions keep plain text).
+- GRUB theme (Resilience background, readable menu); also a chance to fix the unreadable
+  menu on the Yoga 11e through Ventoy (known issue since 0.6.0).
+- Plymouth boot splash: start-up messages hidden by default (Esc shows them; recovery
+  entries in the boot menu always show them), the same splash during installation and
+  offline updates' restart.
+- Themed LUKS passphrase prompt (Plymouth's password dialog, so it also comes with the
+  splash); the keyboard layout chosen at installation must still apply (ADR 0022 initrd).
+- Login screen for the GUI edition (accounts that are not autologin): a greeter (greetd +
+  our own iced greeter) instead of the text login on tty1. Touches authentication: ADR
+  (ADR 0026 amendment) and a security review; tty2-6 text logins stay for recovery.
+
+## Phase 5c — More map packs, more ways to get them ⬜ (proposed 2026-11-22)
+- 0.7.2: more prebuilt map packs on the mirror (a list chosen with the owner: countries and
+  large regions under 2 GiB), in the catalog, rebuilt yearly; built with the sea.
+- Later (ADR first, 0.8.x): downloading packs through torrents (the mirror stays the web
+  seed). Open questions: a BitTorrent client in the system, no seeding without consent
+  (the "no background network traffic" rule), hash check by the store as today.
 
 ## Phase 13 — Media and translation ⬜ (requested 2026-11-21; release 0.9.0, owner 2026-11-21)
 All offline, the same screens in the TUI and the GUI (resilience-shell), ADR first.

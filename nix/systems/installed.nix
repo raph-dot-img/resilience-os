@@ -50,12 +50,20 @@ assert lib.elem boot [
     # Never write the firmware's boot entries; systemd-boot is also the
     # removable fallback EFI/BOOT/BOOTX64.EFI, which firmware finds itself.
     efi.canTouchEfiVariables = false;
+    efi.efiSysMountPoint = "/boot";
     grub = lib.mkIf (boot == "bios") {
       enable = true;
-      # resilience-install runs grub-install on the disk once; later
-      # generations only rewrite grub.cfg.
+      # resilience-install runs grub-install (i386-pc) on the disk once;
+      # later generations only rewrite grub.cfg.
       devices = [ "nodev" ];
       configurationLimit = 10;
+      # Hybrid (0.7.1): GRUB for EFI too, as the removable fallback
+      # EFI/BOOT/BOOTX64.EFI on the boot partition, so the disk also starts
+      # when the firmware boots it in UEFI mode (a stick started in legacy
+      # mode got a BIOS-only disk: ThinkPad Yoga 11e, 2026-11-22). Written by
+      # nixos-install and again on an update; never touches NVRAM.
+      efiSupport = true;
+      efiInstallAsRemovable = true;
     };
   };
 
