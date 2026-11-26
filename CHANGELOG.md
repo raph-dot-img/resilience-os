@@ -6,7 +6,7 @@ Git tags: `vX.Y.Z` on the commit of each release.
 
 ## [Unreleased]
 
-## [0.7.1] — 2026-11-22 — Make your own map, BIOS+UEFI install
+## [0.7.1] — 2026-11-26 — Make your own map, BIOS+UEFI install
 
 ### Added
 - Make or update a map (Maps & navigation): any of Geofabrik's 554
@@ -21,6 +21,10 @@ Git tags: `vX.Y.Z` on the commit of each release.
   (Ventoy, or firmware set to "Both") can then start the disk in UEFI
   mode (ThinkPad Yoga 11e, found on 0.7.0). Systems already installed in
   BIOS mode get it with the 0.7.1 offline update.
+
+### Tested
+- Real hardware (owner, 2026-11-26): several Dell OptiPlex Micro 7020,
+  everything works.
 
 ## [0.7.0] — 2026-11-22 — Graphical edition
 

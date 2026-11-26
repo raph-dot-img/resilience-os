@@ -716,4 +716,5 @@ modest machine running the live ISO has little room for files.
 | GUI preview of the new screen (filter, "made here" marker) | looked at |
 | Full run at `0efed01` (version 0.7.1): 28 checks + 3 live toplevels, one `nix eval` each, one build | PASS (vm-gui timed out once while the host was loaded: "foot" not up within 30 s; passed when re-run alone, no change) |
 | ISOs 0.7.1 (standard, standard-gui, minimal) built; standard and standard-gui booted in QEMU, BIOS and UEFI (`tests/iso/smoke.py`): menu / GUI home reached, licence recorded, v0.7.1 shown | PASS |
+| Real hardware (owner, 2026-11-26): the 0.7.1 test ISOs (same SHA-256 as the ones `feat/0.7.1` builds) on several Dell OptiPlex Micro 7020; owner reports everything works (details of editions and boot modes not recorded) | PASS |
 | Update of a 0.7.0 BIOS install to 0.7.1 adds `EFI/BOOT/BOOTX64.EFI` | NOT TESTED (needs the owner's signed bundle) |
