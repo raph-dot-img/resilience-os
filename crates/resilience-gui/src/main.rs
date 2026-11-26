@@ -15,6 +15,7 @@
 //! a text panel until it gets its own graphical view.
 
 mod logo;
+mod notes_ui;
 mod run;
 mod style;
 mod textpanel;
@@ -145,11 +146,13 @@ enum Message {
     Resized(iced::Size),
     /// Mouse wheel over a text page: lines (positive = towards the end).
     Wheel(i32),
-    RunDone(String, Result<i32, String>),
+    RunDone(String, run::Outcome),
     /// A dialog button: the key it stands for.
     Press(KeyEvent),
     /// Tick or untick a recipient in the "Encrypt for" dialog.
     Recipient(usize),
+    /// The built-in note editor.
+    Note(notes_ui::NoteMsg),
 }
 
 struct Gui {
@@ -157,6 +160,8 @@ struct Gui {
     size: iced::Size,
     /// Label of the program running in its terminal window.
     running: Option<String>,
+    /// The note open in the built-in editor.
+    note: Option<notes_ui::Editor>,
     /// The terminal renderer's output for screens without a native view.
     screen: textpanel::Screen,
     /// Rows in the list drawn last (see [`LIST`]): lets the keyboard
@@ -173,6 +178,8 @@ impl Gui {
     fn new() -> (Gui, Task<Message>) {
         let mut app = App::new(Startup::load());
         app.apply_saved_layout();
+        // Notes open in the editor built into the GUI, not in a terminal.
+        app.builtin_note_editor = true;
         // Development previews only (scripts/gui-preview.sh): a sample catalog.
         if cfg!(debug_assertions)
             && let Some(p) = std::env::var_os("RESILIENCE_PACKS_CONFIG")
@@ -188,6 +195,7 @@ impl Gui {
             app,
             size: iced::Size::new(1280.0, 800.0),
             running: None,
+            note: None,
             screen: textpanel::Screen::default(),
             rows_shown: std::cell::Cell::new(0),
         };
@@ -376,7 +384,50 @@ impl Gui {
                 }
                 Effect::None
             }
+            Message::Note(nm) => {
+                let Some(ed) = self.note.as_mut() else {
+                    return Task::none();
+                };
+                let was_asking = ed.asking;
+                if let notes_ui::After::Close { saved } = ed.update(nm) {
+                    let name = ed.name.clone();
+                    self.note = None;
+                    self.app.reload_notes();
+                    if saved {
+                        self.app.notify(
+                            resilience_shell::app::Level::Info,
+                            format!("Note {name} saved."),
+                        );
+                    }
+                    return Task::none();
+                }
+                // The question takes the keyboard from the editor (its keys
+                // come through Message::Key) and gives it back after.
+                return match (was_asking, ed.asking) {
+                    (false, true) => {
+                        iced::widget::operation::focus(iced::widget::Id::new(NO_FOCUS))
+                    }
+                    (true, false) => {
+                        iced::widget::operation::focus(iced::widget::Id::new(notes_ui::EDITOR))
+                    }
+                    _ => Task::none(),
+                };
+            }
             Message::Key(ev) => {
+                if let Some(ed) = &self.note {
+                    // The "unsaved changes" question answers keys; the
+                    // editor itself takes its own keys.
+                    let answer = if ed.asking {
+                        style::key_from_iced(&ev).and_then(|k| notes_ui::answer_key(k.code))
+                    } else {
+                        None
+                    };
+                    return match answer {
+                        Some(a) => self.update(Message::Note(a)),
+                        None => Task::none(),
+                    };
+                }
+                // Terminal windows take their own keys.
                 if self.running.is_some() {
                     return Task::none();
                 }
@@ -464,13 +515,38 @@ impl Gui {
             }
             Message::RunDone(label, result) => {
                 self.running = None;
+                let reason = match &result {
+                    Ok((code, Some(line))) if *code != 0 => Some(line.clone()),
+                    _ => None,
+                };
                 self.app.after_run(&label, &run::to_status(result));
+                if let Some(r) = reason {
+                    self.app
+                        .notify(resilience_shell::app::Level::Warn, format!("{label}: {r}"));
+                }
                 Effect::None
             }
         };
         match effect {
             Effect::None => Task::none(),
             Effect::Quit => iced::exit(),
+            Effect::EditNote(path) => {
+                let dir = resilience_core::notes::notes_dir(&self.app.home);
+                match notes_ui::Editor::open(&dir, &path) {
+                    Ok(ed) => {
+                        self.note = Some(ed);
+                        // The editor takes the keyboard at once.
+                        iced::widget::operation::focus(iced::widget::Id::new(notes_ui::EDITOR))
+                    }
+                    Err(e) => {
+                        self.app.notify(
+                            resilience_shell::app::Level::Warn,
+                            format!("Cannot open the note: {e}"),
+                        );
+                        Task::none()
+                    }
+                }
+            }
             Effect::Run(req) => {
                 let label = req.label.clone();
                 self.running = Some(label.clone());
@@ -485,6 +561,8 @@ impl Gui {
         let p = Palette::of(self.app.theme);
         let body: Element<'_, Message> = if let Some(label) = &self.running {
             self.running_view(label)
+        } else if let Some(ed) = &self.note {
+            ed.view(&p, Message::Note)
         } else if self.wants_text_panel() {
             self.text_view(&p)
         } else {

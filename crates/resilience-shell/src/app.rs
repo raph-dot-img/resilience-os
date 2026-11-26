@@ -1021,6 +1021,9 @@ pub enum Effect {
     None,
     Quit,
     Run(RunRequest),
+    /// Open this note in the front end's built-in editor (only when
+    /// [`App::builtin_note_editor`] is set: the graphical edition).
+    EditNote(PathBuf),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1065,6 +1068,9 @@ pub struct App {
     /// The Wi-Fi connection attempt running in the background, if any.
     pub wifi_job: Option<WifiJob>,
     pub tick: u64,
+    /// The front end edits notes itself (the GUI; ADR 0026 amendment 1):
+    /// notes open with [`Effect::EditNote`] instead of nano/vim.
+    pub builtin_note_editor: bool,
     last_fast: Instant,
     last_slow: Instant,
 }
@@ -1159,6 +1165,7 @@ impl App {
             toast: None,
             wifi_job: None,
             tick: 0,
+            builtin_note_editor: false,
             last_fast: Instant::now(),
             last_slow: Instant::now(),
             sys: s.sys,
@@ -2489,6 +2496,9 @@ impl App {
     }
 
     fn edit_note(&self, path: PathBuf) -> Effect {
+        if self.builtin_note_editor {
+            return Effect::EditNote(path);
+        }
         let argv = if self.mode() == Mode::UltraStable {
             &self.sys.restricted_editor
         } else {
@@ -2938,7 +2948,8 @@ impl App {
         Effect::None
     }
 
-    fn reload_notes(&mut self) {
+    /// Read the notes folder again (after a front end saved a note).
+    pub fn reload_notes(&mut self) {
         let dir = notes::notes_dir(&self.home);
         for v in self.stack.iter_mut() {
             if let View::Notes { notes: n, list } = v {

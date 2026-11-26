@@ -34,16 +34,21 @@ rustPlatform.buildRustPackage {
   };
 
   cargoLock.lockFile = root + "/Cargo.lock";
-  # The graphical interface is its own package (nix/packages/resilience-gui).
+  # The graphical interface and the graphical map viewer are their own
+  # package (nix/packages/resilience-gui).
   cargoBuildFlags = [
     "--workspace"
     "--exclude"
     "resilience-gui"
+    "--exclude"
+    "resilience-maps-gui"
   ];
   cargoTestFlags = [
     "--workspace"
     "--exclude"
     "resilience-gui"
+    "--exclude"
+    "resilience-maps-gui"
   ];
 
   # The backup round-trip test runs the real tools (tar, sha256sum: stdenv).

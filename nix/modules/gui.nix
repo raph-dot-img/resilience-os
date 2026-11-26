@@ -59,6 +59,9 @@ let
     export WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1
     export RESILIENCE_GUI_FONTS=${fonts}
     export RESILIENCE_TERMINAL=${terminal}
+    # The graphical map viewer: its own process with the hardened reader
+    # (ADR 0026 amendment 1); the GUI starts it for Maps instead of foot.
+    export RESILIENCE_MAPS_GUI=${gui}/bin/resilience-maps-gui
     export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ fonts ]; }}
     # -d: no client decorations; -s: Ctrl+Alt+F2... still reach the other
     # consoles (recovery, ADR 0026 §5).

@@ -23,8 +23,106 @@ pub enum NoteError {
     BadStart,
     #[error("a note with this name already exists")]
     Exists,
+    #[error("the note is larger than 1 MB: open it in a terminal editor")]
+    TooBig,
+    #[error("the note is not plain text (UTF-8): open it in a terminal editor")]
+    NotText,
+    #[error("this is not a note in your Notes folder")]
+    NotANote,
     #[error("{0}")]
     Io(String),
+}
+
+/// Notes larger than this are not opened in the built-in editor (the
+/// graphical edition's; the terminal editors have their own limits).
+pub const MAX_EDIT: u64 = 1024 * 1024;
+
+/// Whether `path` is a note the built-in editor may open: a direct child
+/// of `dir` with a valid note name (no hidden file, no other folder).
+pub fn is_note_path(dir: &Path, path: &Path) -> bool {
+    path.parent() == Some(dir)
+        && path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| file_name_for(n).is_ok_and(|f| f == n))
+}
+
+/// Read a note for the built-in editor: a regular file (never through a
+/// symbolic link), at most [`MAX_EDIT`] bytes, UTF-8.
+pub fn read_for_edit(dir: &Path, path: &Path) -> Result<String, NoteError> {
+    use std::io::Read;
+    if !is_note_path(dir, path) {
+        return Err(NoteError::NotANote);
+    }
+    let f = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|e| NoteError::Io(e.to_string()))?;
+    let meta = f.metadata().map_err(|e| NoteError::Io(e.to_string()))?;
+    if !meta.is_file() {
+        return Err(NoteError::NotANote);
+    }
+    if meta.len() > MAX_EDIT {
+        return Err(NoteError::TooBig);
+    }
+    let mut bytes = Vec::new();
+    f.take(MAX_EDIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| NoteError::Io(e.to_string()))?;
+    if bytes.len() as u64 > MAX_EDIT {
+        return Err(NoteError::TooBig);
+    }
+    String::from_utf8(bytes).map_err(|_| NoteError::NotText)
+}
+
+/// Save a note from the built-in editor: written to a new private file in
+/// the same folder, flushed to disk, then renamed over the note, so a
+/// crash or a full disk never leaves half a note. At most [`MAX_EDIT`]
+/// bytes.
+pub fn save(dir: &Path, path: &Path, text: &str) -> Result<(), NoteError> {
+    use std::io::Write;
+    if !is_note_path(dir, path) {
+        return Err(NoteError::NotANote);
+    }
+    if text.len() as u64 > MAX_EDIT {
+        return Err(NoteError::TooBig);
+    }
+    let io = |e: std::io::Error| NoteError::Io(e.to_string());
+    let mut tmp = None;
+    for n in 0..100u32 {
+        let t = dir.join(format!(".note-{}-{n}.tmp", std::process::id()));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&t)
+        {
+            Ok(f) => {
+                tmp = Some((t, f));
+                break;
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(io(e)),
+        }
+    }
+    let Some((t, mut f)) = tmp else {
+        return Err(NoteError::Io("no free temporary file name".into()));
+    };
+    let written = f
+        .write_all(text.as_bytes())
+        .and_then(|()| f.sync_all())
+        .and_then(|()| fs::rename(&t, path));
+    if let Err(e) = written {
+        let _ = fs::remove_file(&t);
+        return Err(io(e));
+    }
+    // The rename itself is durable once the folder is synced.
+    if let Ok(d) = fs::File::open(dir) {
+        let _ = d.sync_all();
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +233,42 @@ mod tests {
         assert_eq!(file_name_for("a..b"), Err(NoteError::BadCharacter));
         assert_eq!(file_name_for("tab\there"), Err(NoteError::BadCharacter));
         assert_eq!(file_name_for(&"x".repeat(65)), Err(NoteError::TooLong));
+    }
+
+    #[test]
+    fn edits_round_trip_and_refuse_what_is_not_a_note() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("resilience-notes-ed-{}", std::process::id()));
+        let p = create(&dir, "diary").expect("create");
+        save(&dir, &p, "line 1\nligne 2 é\n").expect("save");
+        assert_eq!(
+            read_for_edit(&dir, &p).as_deref(),
+            Ok("line 1\nligne 2 é\n")
+        );
+        assert_eq!(
+            fs::metadata(&p).expect("m").permissions().mode() & 0o777,
+            0o600
+        );
+        // No temporary file is left behind.
+        assert_eq!(fs::read_dir(&dir).expect("ls").count(), 1);
+        // Too big, not text, outside the folder, hidden, a symbolic link.
+        assert_eq!(
+            save(&dir, &p, &"x".repeat(MAX_EDIT as usize + 1)),
+            Err(NoteError::TooBig)
+        );
+        fs::write(&p, [0xffu8, 0xfe, 0x00]).expect("w");
+        assert_eq!(read_for_edit(&dir, &p), Err(NoteError::NotText));
+        let outside = std::env::temp_dir().join("resilience-notes-outside.txt");
+        assert_eq!(read_for_edit(&dir, &outside), Err(NoteError::NotANote));
+        assert_eq!(save(&dir, &outside, "x"), Err(NoteError::NotANote));
+        assert_eq!(
+            read_for_edit(&dir, &dir.join(".hidden.txt")),
+            Err(NoteError::NotANote)
+        );
+        let link = dir.join("link.txt");
+        std::os::unix::fs::symlink("/etc/hostname", &link).expect("symlink");
+        assert!(read_for_edit(&dir, &link).is_err());
+        fs::remove_dir_all(&dir).expect("cleanup");
     }
 
     #[test]

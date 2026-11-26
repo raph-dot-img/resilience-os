@@ -135,6 +135,29 @@
         # No request file is left behind.
         machine.fail("ls /run/user/*/resilience-run-* 2>/dev/null | grep -q .")
 
+    with subtest("the map opens in the graphical viewer, a separate limited process"):
+        # ADR 0026 amendment 1: resilience-maps-gui, not foot.
+        machine.send_chars("/map")
+        machine.wait_for_text("Map", timeout=90)
+        machine.send_key("ret")
+        machine.wait_until_succeeds("pgrep -u alice -x resilience-maps", timeout=30)
+        machine.fail("pgrep -u alice -x foot")
+        pid = machine.succeed("pgrep -u alice -x resilience-maps").strip()
+        # The 1 GiB address-space limit is set in the viewer itself.
+        machine.succeed(f"grep -E '^Max address space +1073741824 ' /proc/{pid}/limits")
+        machine.wait_for_text("World overview", timeout=120)
+        machine.screenshot("gui-map")
+        machine.send_key("plus")
+        machine.send_key("plus")
+        time.sleep(2)
+        machine.screenshot("gui-map-zoomed")
+        machine.send_key("q")
+        machine.wait_until_fails("pgrep -u alice -x resilience-maps", timeout=30)
+        machine.wait_until_succeeds("pgrep -u alice -x resilience-gui", timeout=10)
+        machine.wait_for_text("Map", timeout=90)
+        machine.send_key("esc")
+        machine.send_key("esc")
+
     with subtest("Ctrl+Alt+F2 reaches a text login (recovery)"):
         machine.send_key("ctrl-alt-f2")
         machine.wait_until_succeeds("test \"$(fgconsole)\" = 2", timeout=30)

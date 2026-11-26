@@ -203,6 +203,8 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<()> {
                     Effect::None => {}
                     Effect::Quit => return Ok(()),
                     Effect::Run(req) => run_program(terminal, app, &req)?,
+                    // Never asked of the TUI (`builtin_note_editor` is off).
+                    Effect::EditNote(_) => {}
                 },
                 Event::Resize(..) => {}
                 _ => {}

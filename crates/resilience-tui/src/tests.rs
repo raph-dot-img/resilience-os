@@ -640,6 +640,25 @@ fn new_note_validates_name_and_opens_editor() {
 }
 
 #[test]
+fn notes_open_in_the_builtin_editor_when_the_front_end_has_one() {
+    let mut a = app(Mode::UltraStable, "notes-builtin");
+    a.builtin_note_editor = true;
+    let (v, _) = a.activate(Entry::Builtin(Builtin::Notes));
+    a.stack.push(v.expect("notes view"));
+    press(&mut a, KeyCode::Char('n'));
+    for c in "diary".chars() {
+        press(&mut a, KeyCode::Char(c));
+    }
+    match press(&mut a, KeyCode::Enter) {
+        Effect::EditNote(p) => assert!(p.ends_with("Notes/diary.txt")),
+        other => panic!("expected the built-in editor, got {other:?}"),
+    }
+    // Enter on the listed note opens it the same way.
+    press(&mut a, KeyCode::Home);
+    assert!(matches!(press(&mut a, KeyCode::Enter), Effect::EditNote(_)));
+}
+
+#[test]
 fn theme_change_is_saved() {
     let mut a = app(Mode::UltraStable, "theme");
     let (v, _) = a.activate(Entry::Builtin(Builtin::Settings));

@@ -1,5 +1,6 @@
 # The graphical interface (ADR 0026): `resilience-gui` (iced, software
-# rendering) built alone from the workspace. libwayland-client and
+# rendering) and the graphical map viewer `resilience-maps-gui` (ADR 0026
+# amendment 1), built alone from the workspace. libwayland-client and
 # libxkbcommon are loaded at run time (dlopen): their paths go into the
 # binary's RUNPATH. Its unit tests run in the check phase.
 {
@@ -32,10 +33,14 @@ rustPlatform.buildRustPackage {
   cargoBuildFlags = [
     "-p"
     "resilience-gui"
+    "-p"
+    "resilience-maps-gui"
   ];
   cargoTestFlags = [
     "-p"
     "resilience-gui"
+    "-p"
+    "resilience-maps-gui"
   ];
 
   nativeBuildInputs = [ patchelf ];
@@ -45,7 +50,7 @@ rustPlatform.buildRustPackage {
         wayland
         libxkbcommon
       ]
-    } "$out/bin/resilience-gui"
+    } "$out/bin/resilience-gui" "$out/bin/resilience-maps-gui"
   '';
 
   meta = {
