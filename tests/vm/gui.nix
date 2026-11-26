@@ -136,11 +136,25 @@
         machine.fail("ls /run/user/*/resilience-run-* 2>/dev/null | grep -q .")
 
     with subtest("the map opens in the graphical viewer, a separate limited process"):
-        # ADR 0026 amendment 1: resilience-maps-gui, not foot.
+        # ADR 0026 amendment 1: resilience-maps-gui, not foot. From the
+        # main screen (the search above is still open).
+        machine.send_key("esc")
+        machine.send_key("esc")
+        machine.wait_for_text("Hello", timeout=90)
         machine.send_chars("/map")
         machine.wait_for_text("Map", timeout=90)
+        machine.screenshot("gui-map-search")
+        # The first hit is the section Maps & navigation; its first tile
+        # is Map.
         machine.send_key("ret")
-        machine.wait_until_succeeds("pgrep -u alice -x resilience-maps", timeout=30)
+        machine.wait_for_text("Make or update", timeout=90)
+        machine.send_key("ret")
+        try:
+            machine.wait_until_succeeds("pgrep -u alice -x resilience-maps", timeout=30)
+        except Exception:
+            print(machine.get_screen_text())
+            print(machine.execute("ps -u alice -o pid,args; tail -30 /home/alice/.local/state/resilience/gui.log")[1])
+            raise
         machine.fail("pgrep -u alice -x foot")
         pid = machine.succeed("pgrep -u alice -x resilience-maps").strip()
         # The 1 GiB address-space limit is set in the viewer itself.
@@ -154,7 +168,7 @@
         machine.send_key("q")
         machine.wait_until_fails("pgrep -u alice -x resilience-maps", timeout=30)
         machine.wait_until_succeeds("pgrep -u alice -x resilience-gui", timeout=10)
-        machine.wait_for_text("Map", timeout=90)
+        machine.wait_for_text("Make or update", timeout=90)
         machine.send_key("esc")
         machine.send_key("esc")
 
