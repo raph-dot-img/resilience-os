@@ -238,6 +238,13 @@ let
     sea = waterPolygonsShp;
     seaSource = "OpenStreetMap water polygons of 2026-11-20 sha256:8c02ca8554882c7e99efeefa8f618e12395bced404a97c47a65a32d25fe39d05";
   };
+  # The other catalog regions (2026-11-22): one table, made from the
+  # fetched extracts by scripts/map-pack-sources.py (nix/maps/regional.nix).
+  regional = import ./regional.nix {
+    inherit fetchurl;
+    sea = waterPolygonsShp;
+    seaSource = bretagne.seaSource;
+  };
 in
 {
   inherit mkPack mapmaker;
@@ -246,7 +253,8 @@ in
     testland = mkPack testland;
     luxembourg = mkPack luxembourg;
     bretagne = mkPack bretagne;
-  };
+  }
+  // lib.mapAttrs (_: mkPack) regional;
 
   # The same test pack built on one thread (TIPPECANOE_MAX_THREADS=1,
   # OSMIUM_POOL_THREADS=1): checks.map-pack-reproducible compares the two.

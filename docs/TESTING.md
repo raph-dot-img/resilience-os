@@ -718,3 +718,14 @@ modest machine running the live ISO has little room for files.
 | ISOs 0.7.1 (standard, standard-gui, minimal) built; standard and standard-gui booted in QEMU, BIOS and UEFI (`tests/iso/smoke.py`): menu / GUI home reached, licence recorded, v0.7.1 shown | PASS |
 | Real hardware (owner, 2026-11-26): the 0.7.1 test ISOs (same SHA-256 as the ones `feat/0.7.1` builds) on several Dell OptiPlex Micro 7020; owner reports everything works (details of editions and boot modes not recorded) | PASS |
 | Update of a 0.7.0 BIOS install to 0.7.1 adds `EFI/BOOT/BOOTX64.EFI` | NOT TESTED (needs the owner's signed bundle) |
+
+## Catalog map packs, 23 more regions (branch `feat/map-packs`, 2026-11-22)
+
+| Test | Result |
+|---|---|
+| 23 Geofabrik extracts of 2026-11-21 (21 French regions + Corse, Belgium, Switzerland; 6.0 GB) fetched, MD5 checked against Geofabrik's | PASS |
+| `nix build .#mapPacks.ID` for each, one at a time: 52 s (Corse) to 380 s (Switzerland), peak 2.2-2.3 GB (osmium tags-filter); sea in the 12 coastal ones | PASS |
+| `resilience-maps info --check` on every pack: integrity ok, search available | PASS |
+| Published on the mirror (packs 3.2 GB + their inputs), SHA256SUMS rewritten; all 75 files HTTP 200; two downloaded back, same SHA-256 | PASS |
+| Catalog (`nix/packs/maps.nix`, 25 map packs) passes the build-time catalog check | PASS |
+| Installing one of the new packs through the TUI | NOT TESTED (same path as vm-packs; for 0.7.2) |
