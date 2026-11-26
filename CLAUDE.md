@@ -774,7 +774,7 @@ program, found 2026-11-20, is fixed on `feat/maps-search`) for 0.6.0
 ISOs identical to the ones booted in QEMU, published on the mirror with `LATEST` =
 0.7.0, torrent and GitHub release. Hardware: MSI GL73 install OK; Yoga 11e live OK,
 installed system does not start (stick starts in legacy mode -> BIOS-only GRUB);
-L15 live OK. Next: 0.7.1 = build your own map + hybrid BIOS+UEFI install;
+L15 live OK. Release 0.7.1 (build your own map, Phase 5b; hybrid BIOS+UEFI install) is RELEASED (2026-11-26): tag `v0.7.1` on `main` `ef68af5`, ISOs identical to the tested ones (owner: several Dell OptiPlex Micro 7020, all OK), signed by the owner, on the mirror with `LATEST` = 0.7.1, torrent, GitHub release; update 0.7.0 -> 0.7.1 (adds EFI/BOOT/BOOTX64.EFI on BIOS installs) NOT TESTED yet. `feat/map-packs` (23 more catalog packs, from 0.7.0) not in 0.7.1: for 0.7.2. Next:
 0.7.2-0.7.3 = native GUI screens (ROADMAP Phase 12b). Release
 0.8.0: Phase 11, offline assistant (local model via Ollama or
 llama.cpp, models as hash-pinned packs, answers grounded in the
