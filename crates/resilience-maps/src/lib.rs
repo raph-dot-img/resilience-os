@@ -43,6 +43,7 @@ pub mod position;
 pub mod profile;
 pub mod render;
 pub mod rlimit;
+pub mod scene;
 pub mod schema;
 pub mod text;
 pub mod ui;

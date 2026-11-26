@@ -1014,8 +1014,28 @@ impl MapApp {
     /// what is cached.
     pub fn map_canvas(&mut self, cols: u16, rows: u16) -> Canvas {
         self.ensure_plan(cols, rows);
-        let Some(plan) = self.plan.as_ref() else {
+        if self.plan.is_none() {
             return Canvas::new(cols, rows);
+        }
+        let view = self.view;
+        self.with_sources(|sources| render::render(&view, cols, rows, sources))
+    }
+
+    /// The map of `width` x `height` pixels as vector shapes, for the
+    /// graphical viewer: plans (the same tiles as a terminal of
+    /// [`scene::plan_size`](crate::scene::plan_size)), queues reads and
+    /// draws what is cached.
+    pub fn map_scene(&mut self, width: u32, height: u32) -> crate::scene::Scene {
+        let (cols, rows) = crate::scene::plan_size(width, height);
+        self.ensure_plan(cols, rows);
+        let view = self.view;
+        self.with_sources(|sources| crate::scene::scene(&view, cols, rows, sources))
+    }
+
+    /// The planned sources with their cached tiles.
+    fn with_sources<T>(&mut self, f: impl FnOnce(&[Source<'_>]) -> T) -> T {
+        let Some(plan) = self.plan.as_ref() else {
+            return f(&[]);
         };
         let mut lists = Vec::new();
         for (i, tiles) in &plan.sources {
@@ -1047,7 +1067,7 @@ impl MapApp {
                 })
             })
             .collect();
-        render::render(&self.view, cols, rows, &sources)
+        f(&sources)
     }
 
     /// Packs with something in view, top first.

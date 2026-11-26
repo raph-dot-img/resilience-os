@@ -192,7 +192,7 @@ pub fn dash_phase(points: &[Point], origin: (f64, f64)) -> f64 {
 /// The canvas origin in world pixels, rounded down to a whole pixel (so
 /// that the pattern index of a pixel does not depend on where in its pixel
 /// a piece of line starts) and reduced modulo 15.
-fn pattern_origin(vp: &Viewport) -> (f64, f64) {
+pub(crate) fn pattern_origin(vp: &Viewport) -> (f64, f64) {
     let t = world_transform(vp);
     (
         (-t.offset_x).floor().rem_euclid(15.0),
@@ -200,11 +200,11 @@ fn pattern_origin(vp: &Viewport) -> (f64, f64) {
     )
 }
 
-struct Item<'t> {
-    rule: &'static Rule,
-    feature: mvt::Feature<'t>,
-    transform: TileTransform,
-    road: bool,
+pub(crate) struct Item<'t> {
+    pub(crate) rule: &'static Rule,
+    pub(crate) feature: mvt::Feature<'t>,
+    pub(crate) transform: TileTransform,
+    pub(crate) road: bool,
 }
 
 /// The class value of a feature for its layer.
@@ -226,7 +226,7 @@ fn rule_of(
 }
 
 /// Collect a source's drawable features, sorted for drawing.
-fn collect<'t>(
+pub(crate) fn collect<'t>(
     tiles: &'t [(ViewTile, Arc<mvt::Tile>)],
     vp: &Viewport,
     scale: f64,
@@ -256,7 +256,7 @@ fn collect<'t>(
 }
 
 /// Label text of a point feature, folded; may be empty.
-fn label_text(l: &style::LabelRule, f: &mvt::Feature<'_>, scale: f64) -> String {
+pub(crate) fn label_text(l: &style::LabelRule, f: &mvt::Feature<'_>, scale: f64) -> String {
     if !l.name_visible(scale) {
         return String::new();
     }
@@ -437,7 +437,7 @@ impl Drawer {
 }
 
 /// An area's rings in view pixels, once per copy of the world in view.
-fn area_pixels(area: &Area, vp: &Viewport) -> Vec<Vec<Point>> {
+pub(crate) fn area_pixels(area: &Area, vp: &Viewport) -> Vec<Vec<Point>> {
     let t = world_transform(vp);
     let (x0, y0, x1, y1) = world_rect(vp);
     let mut out = Vec::new();

@@ -1922,3 +1922,45 @@ fn damaged_packs_are_not_searched_and_a_lost_reader_ends_a_search() {
     assert!(!s.contains("Searching..."), "{s}");
     assert!(s.contains("Could not be searched: World overview"), "{s}");
 }
+
+// The graphical viewer's scene (ADR 0026 amendment 1): the same tiles and
+// rules as the block-character map, as vector shapes.
+#[test]
+fn scene_has_the_lake_the_road_and_names() {
+    use crate::scene::{Shape, plan_size};
+    let t = testland("Testland", "2026-01-01");
+    let mut h = Harness::new("scene", &[("t.mbtiles", &t)], Some(TESTVILLE), Some(20.0));
+    let _ = h.app.map_scene(1200, 800);
+    h.pump();
+    let s = h.app.map_scene(1200, 800);
+    let (c, r) = plan_size(1200, 800);
+    assert_eq!(
+        (s.width, s.height),
+        (2 * u32::from(c / 2) + 1, 2 * (2 * u32::from(r / 2) + 1))
+    );
+    assert!(
+        s.shapes
+            .iter()
+            .any(|x| matches!(x, Shape::Line { road: true, .. })),
+        "{:?}",
+        s.shapes.len()
+    );
+    // Every point is finite: the front end draws them as given.
+    for x in &s.shapes {
+        let pts: Vec<_> = match x {
+            Shape::Fill { rings, .. } | Shape::Cover { rings } => rings.concat(),
+            Shape::Line { points, .. } | Shape::Edge { points } => points.clone(),
+        };
+        assert!(pts.iter().all(|p| p.0.is_finite() && p.1.is_finite()));
+    }
+    let texts: Vec<&str> = s
+        .labels
+        .iter()
+        .filter_map(|l| l.text.as_ref().map(|(_, t)| t.as_str()))
+        .collect();
+    // A vertical road gets no name (only nearly horizontal stretches do).
+    assert!(texts.iter().any(|t| t.contains("Testville")), "{texts:?}");
+    assert!(!s.truncated);
+    // Nothing more to read: the scene used the planned tiles.
+    assert!(!h.app.has_requests());
+}
