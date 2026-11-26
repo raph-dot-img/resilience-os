@@ -1029,6 +1029,13 @@ impl MapApp {
     /// ([`scene::LABEL_CELL`](crate::scene::LABEL_CELL) at full size).
     pub fn map_scene(&mut self, width: u32, height: u32, cell: (f64, f64)) -> crate::scene::Scene {
         let (cols, rows) = crate::scene::plan_size(width, height);
+        // On a wide window the coarsest scale shows the world several
+        // times, small: zooming out stops where it fills the width once.
+        let wpp = self.view.world_per_pixel();
+        let across = wpp * f64::from(cols);
+        if across.is_finite() && across > 1.0 {
+            self.view.set_scale(self.view.scale() / across);
+        }
         self.ensure_plan(cols, rows);
         let view = self.view;
         self.with_sources(|sources| crate::scene::scene(&view, cols, rows, sources, cell))

@@ -1990,3 +1990,27 @@ fn drag_and_wheel_zoom_move_the_view() {
     h.app.drag(10.0, 10.0);
     assert_eq!(*h.app.view(), before);
 }
+
+#[test]
+fn the_graphical_scene_never_shows_the_world_more_than_once_across() {
+    let t = testland("Testland", "2026-01-01");
+    let mut h = Harness::new(
+        "wide",
+        &[("t.mbtiles", &t)],
+        Some(TESTVILLE),
+        Some(200_000.0),
+    );
+    let _ = h.app.map_scene(1000, 600, crate::scene::LABEL_CELL);
+    let (c, _) = crate::scene::plan_size(1000, 600);
+    let across = h.app.view().world_per_pixel() * f64::from(c);
+    assert!(across <= 1.0 + 1e-9, "{across}");
+    // A narrow window keeps the scale.
+    let mut h = Harness::new(
+        "narrow",
+        &[("t.mbtiles", &t)],
+        Some(TESTVILLE),
+        Some(200_000.0),
+    );
+    let _ = h.app.map_scene(100, 100, crate::scene::LABEL_CELL);
+    assert_eq!(h.app.view().scale(), 200_000.0);
+}

@@ -161,9 +161,9 @@
         machine.succeed(f"grep -E '^Max address space +1073741824 ' /proc/{pid}/limits")
         machine.wait_for_text("World overview", timeout=120)
         machine.screenshot("gui-map")
-        machine.send_key("plus")
-        machine.send_key("plus")
-        time.sleep(2)
+        # The world fills the width once (no copies side by side).
+        machine.send_chars("++")
+        machine.wait_for_text("200 km", timeout=60)
         machine.screenshot("gui-map-zoomed")
         machine.send_key("q")
         machine.wait_until_fails("pgrep -u alice -x resilience-maps", timeout=30)
