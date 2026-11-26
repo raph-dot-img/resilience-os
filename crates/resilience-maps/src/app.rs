@@ -1025,11 +1025,13 @@ impl MapApp {
     /// graphical viewer: plans (the same tiles as a terminal of
     /// [`scene::plan_size`](crate::scene::plan_size)), queues reads and
     /// draws what is cached.
-    pub fn map_scene(&mut self, width: u32, height: u32) -> crate::scene::Scene {
+    /// `cell` is the label grid's cell in view pixels
+    /// ([`scene::LABEL_CELL`](crate::scene::LABEL_CELL) at full size).
+    pub fn map_scene(&mut self, width: u32, height: u32, cell: (f64, f64)) -> crate::scene::Scene {
         let (cols, rows) = crate::scene::plan_size(width, height);
         self.ensure_plan(cols, rows);
         let view = self.view;
-        self.with_sources(|sources| crate::scene::scene(&view, cols, rows, sources))
+        self.with_sources(|sources| crate::scene::scene(&view, cols, rows, sources, cell))
     }
 
     /// The planned sources with their cached tiles.
@@ -1201,6 +1203,31 @@ impl MapApp {
             return Some((Level::Info, "Reading the map...".into()));
         }
         None
+    }
+
+    /// Move the map by `(dx, dy)` view pixels (a mouse drag: the map
+    /// follows the pointer). Map screen only; non-finite values are ignored.
+    pub fn drag(&mut self, dx: f64, dy: f64) {
+        if self.screen != Screen::Map || !(dx.is_finite() && dy.is_finite()) {
+            return;
+        }
+        self.view.pan_pixels(-dx, -dy);
+        self.moved();
+    }
+
+    /// Zoom by `factor` (> 1 zooms out) keeping the place at `(dx, dy)` view
+    /// pixels from the centre under the pointer (the mouse wheel). The
+    /// scale stays within the viewer's bounds.
+    pub fn zoom_by(&mut self, factor: f64, dx: f64, dy: f64) {
+        if self.screen != Screen::Map
+            || !(factor.is_finite() && factor > 0.0 && dx.is_finite() && dy.is_finite())
+        {
+            return;
+        }
+        self.view.pan_pixels(dx, dy);
+        self.view.set_scale(self.view.scale() * factor);
+        self.view.pan_pixels(-dx, -dy);
+        self.moved();
     }
 
     fn pan_quarter(&mut self, dx: f64, dy: f64) {

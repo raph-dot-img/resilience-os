@@ -1930,9 +1930,9 @@ fn scene_has_the_lake_the_road_and_names() {
     use crate::scene::{Shape, plan_size};
     let t = testland("Testland", "2026-01-01");
     let mut h = Harness::new("scene", &[("t.mbtiles", &t)], Some(TESTVILLE), Some(20.0));
-    let _ = h.app.map_scene(1200, 800);
+    let _ = h.app.map_scene(1200, 800, crate::scene::LABEL_CELL);
     h.pump();
-    let s = h.app.map_scene(1200, 800);
+    let s = h.app.map_scene(1200, 800, crate::scene::LABEL_CELL);
     let (c, r) = plan_size(1200, 800);
     assert_eq!(
         (s.width, s.height),
@@ -1963,4 +1963,30 @@ fn scene_has_the_lake_the_road_and_names() {
     assert!(!s.truncated);
     // Nothing more to read: the scene used the planned tiles.
     assert!(!h.app.has_requests());
+}
+
+#[test]
+fn drag_and_wheel_zoom_move_the_view() {
+    let t = testland("Testland", "2026-01-01");
+    let mut h = Harness::new("drag", &[("t.mbtiles", &t)], Some(TESTVILLE), Some(20.0));
+    let c0 = h.app.view().center();
+    // Dragging right moves the map right: the centre goes west.
+    h.app.drag(100.0, 0.0);
+    assert!(h.app.view().center().lon() < c0.lon());
+    h.app.drag(-100.0, 0.0);
+    assert!((h.app.view().center().lon() - c0.lon()).abs() < 1e-9);
+    // Zooming around the centre keeps it; the scale changes smoothly.
+    h.app.zoom_by(1.25, 0.0, 0.0);
+    assert!((h.app.view().scale() - 25.0).abs() < 1e-6);
+    assert!((h.app.view().center().lat() - c0.lat()).abs() < 1e-9);
+    // Zooming around another point moves the centre towards it.
+    h.app.zoom_by(0.5, 200.0, 0.0);
+    assert!(h.app.view().center().lon() > c0.lon());
+    // Garbage is ignored; other screens ignore the mouse.
+    let before = *h.app.view();
+    h.app.zoom_by(f64::NAN, 0.0, 0.0);
+    h.app.drag(f64::INFINITY, 0.0);
+    h.app.screen = Screen::Help { scroll: 0 };
+    h.app.drag(10.0, 10.0);
+    assert_eq!(*h.app.view(), before);
 }

@@ -31,7 +31,9 @@ use crate::render::{
     self, Role, Source, area_pixels, collect, dash_phase, fine, label_text, pattern_origin,
 };
 
-/// Width and height in pixels of one cell of the label grid.
+/// Width and height in view pixels of one cell of the label grid when the
+/// view is drawn at its own size (the front end passes its own cell size
+/// when it enlarges the view).
 pub const LABEL_CELL: (f64, f64) = (8.0, 16.0);
 
 /// At most this many shapes in one scene (a hostile pack cannot make the
@@ -102,7 +104,12 @@ pub fn plan_size(width: u32, height: u32) -> (u16, u16) {
 /// The scene of a map of `cols` x `rows` planner cells (see [`plan_size`]):
 /// `cols` x `2 * rows` pixels (odd dimensions around the crosshair, as in
 /// [`render::viewport`]).
-pub fn scene(view: &View, cols: u16, rows: u16, sources: &[Source<'_>]) -> Scene {
+pub fn scene(view: &View, cols: u16, rows: u16, sources: &[Source<'_>], cell: (f64, f64)) -> Scene {
+    let cell = if cell.0.is_finite() && cell.1.is_finite() && cell.0 >= 1.0 && cell.1 >= 1.0 {
+        cell
+    } else {
+        LABEL_CELL
+    };
     let vp = render::viewport(view, cols, rows);
     let scale = view.scale();
     let fine = fine(scale);
@@ -153,7 +160,16 @@ pub fn scene(view: &View, cols: u16, rows: u16, sources: &[Source<'_>]) -> Scene
             }
         };
         let items = collect(&s.tiles, &vp, scale);
-        draw_items(&mut out, &vp, origin, scale, &items, &mut own, &mut streets);
+        draw_items(
+            &mut out,
+            &vp,
+            origin,
+            scale,
+            cell,
+            &items,
+            &mut own,
+            &mut streets,
+        );
         if let Some(r) = &rings {
             own.retain(|(_, p)| inside(r, *p));
         }
@@ -180,10 +196,10 @@ pub fn scene(view: &View, cols: u16, rows: u16, sources: &[Source<'_>]) -> Scene
             }
         }
     }
-    let (lc, lr) = label_grid(w, h);
+    let (lc, lr) = label_grid(w, h, cell);
     let (cc, cr) = (
-        (out.crosshair.0 / LABEL_CELL.0) as u16,
-        (out.crosshair.1 / LABEL_CELL.1) as u16,
+        (out.crosshair.0 / cell.0) as u16,
+        (out.crosshair.1 / cell.1) as u16,
     );
     let reserved = [CellRect {
         col: cc,
@@ -192,8 +208,7 @@ pub fn scene(view: &View, cols: u16, rows: u16, sources: &[Source<'_>]) -> Scene
         height: 1,
     }];
     for p in label::place(&all, lc, lr, &reserved) {
-        let at =
-            |col: u16, row: u16| (f64::from(col) * LABEL_CELL.0, f64::from(row) * LABEL_CELL.1);
+        let at = |col: u16, row: u16| (f64::from(col) * cell.0, f64::from(row) * cell.1);
         out.labels.push(Label {
             marker: p.marker.map(|(c, r, ch)| (at(c, r), ch)),
             text: p.text.map(|(c, r, t)| (at(c, r), t)),
@@ -203,10 +218,10 @@ pub fn scene(view: &View, cols: u16, rows: u16, sources: &[Source<'_>]) -> Scene
     out
 }
 
-fn label_grid(w: u32, h: u32) -> (u16, u16) {
+fn label_grid(w: u32, h: u32, cell: (f64, f64)) -> (u16, u16) {
     (
-        (f64::from(w) / LABEL_CELL.0).floor().max(1.0) as u16,
-        (f64::from(h) / LABEL_CELL.1).floor().max(1.0) as u16,
+        (f64::from(w) / cell.0).floor().clamp(1.0, 1024.0) as u16,
+        (f64::from(h) / cell.1).floor().clamp(1.0, 1024.0) as u16,
     )
 }
 
@@ -245,12 +260,13 @@ fn draw_items(
     vp: &Viewport,
     origin: (f64, f64),
     scale: f64,
+    cell: (f64, f64),
     items: &[render::Item<'_>],
     labels: &mut Vec<(Candidate, Point)>,
     streets: &mut HashSet<String>,
 ) {
     let (w, h) = (vp.width(), vp.height());
-    let (lc, lr) = label_grid(w, h);
+    let (lc, lr) = label_grid(w, h, cell);
     let street_names = STREET_NAMES.name_visible(scale);
     for it in items {
         let f = &it.feature;
@@ -291,7 +307,7 @@ fn draw_items(
                         dash_phase(&points, origin)
                     };
                     if it.road && street_names {
-                        street_label(f, &points, lc, lr, labels, streets);
+                        street_label(f, &points, cell, lc, lr, labels, streets);
                     }
                     push(
                         out,
@@ -320,8 +336,8 @@ fn draw_items(
                         labels.push((
                             Candidate {
                                 priority: l.priority,
-                                col: (x / LABEL_CELL.0).floor() as i32,
-                                row: (y / LABEL_CELL.1).floor() as i32,
+                                col: (x / cell.0).floor() as i32,
+                                row: (y / cell.1).floor() as i32,
                                 marker: l.marker,
                                 text: text.clone(),
                                 colour: it.rule.colour,
@@ -339,6 +355,7 @@ fn draw_items(
 fn street_label(
     f: &resilience_core::maps::mvt::Feature<'_>,
     points: &[Point],
+    cell: (f64, f64),
     cols: u16,
     rows: u16,
     labels: &mut Vec<(Candidate, Point)>,
@@ -358,11 +375,11 @@ fn street_label(
     // grid's cells instead.
     let cells: Vec<Point> = points
         .iter()
-        .map(|&(x, y)| (x / LABEL_CELL.0, 2.0 * y / LABEL_CELL.1))
+        .map(|&(x, y)| (x / cell.0, 2.0 * y / cell.1))
         .collect();
     if let Some((col, row)) = label::street_anchor(&cells, name.chars().count(), cols, rows) {
         streets.insert(name.clone());
-        let p = (f64::from(col) * LABEL_CELL.0, f64::from(row) * LABEL_CELL.1);
+        let p = (f64::from(col) * cell.0, f64::from(row) * cell.1);
         labels.push((
             Candidate {
                 priority: STREET_NAMES.priority,
@@ -405,7 +422,7 @@ mod tests {
     fn empty_view_has_sea_with_an_overview_only() {
         let v = View::new(LatLon::wrapped(49.6, 6.1), 1000.0);
         let (c, r) = plan_size(801, 601);
-        let s = scene(&v, c, r, &[]);
+        let s = scene(&v, c, r, &[], LABEL_CELL);
         assert_eq!(s.background, Colour::Black);
         assert!(s.shapes.is_empty() && s.labels.is_empty());
         assert_eq!((s.width, s.height), (801, 602));

@@ -2450,6 +2450,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "resilience-maps-gui"
+version = "0.7.1"
+dependencies = [
+ "iced",
+ "libc",
+ "ratatui",
+ "resilience-core",
+ "resilience-maps",
+]
+
+[[package]]
 name = "resilience-shell"
 version = "0.7.1"
 dependencies = [

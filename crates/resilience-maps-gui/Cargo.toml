@@ -1,0 +1,21 @@
+[package]
+name = "resilience-maps-gui"
+description = "Graphical map viewer of Resilience OS: the hardened pack reader drawn with iced (ADR 0016, ADR 0026 amendment 1)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "resilience-maps-gui"
+path = "src/main.rs"
+
+[dependencies]
+resilience-core.workspace = true
+resilience-maps = { path = "../resilience-maps" }
+ratatui.workspace = true
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "wayland", "smol", "crisp", "canvas"] }
+libc.workspace = true
+
+[lints]
+workspace = true
