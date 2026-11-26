@@ -107,6 +107,33 @@ edition (cage without Xwayland, fonts copied: 4 files).
    network, crypto, backups, recovery, installer, then maps last (vector renderer).
 6. Installer/update variants, handbook, measurements, release 0.7.0.
 
+## Amendment 1 (2026-11-26, owner): native screens that parse untrusted files
+
+For 0.7.2 (ROADMAP Phase 12b) the map viewer and notes become native.
+
+- **Maps stay a separate process.** Map files come from sticks and other
+  computers: they are untrusted input (ADR 0016 §7). The native viewer is a
+  new binary **`resilience-maps-gui`** (crate `crates/resilience-maps-gui`,
+  iced, the same versions and renderer as `resilience-gui`), linked to the
+  `resilience-maps` library: the same hardened pack reader, reader thread,
+  tile cache and state machine (`MapApp`), with a pixel renderer instead of
+  block characters. Like `resilience-maps view` it lowers its address-space
+  limit to 1 GiB **before it opens any file**, runs as the user, starts no
+  program and writes only its last position. A crash or a hostile file
+  stops the viewer only; the GUI comes back. `resilience-gui` never opens
+  a map file itself. Drawing inside the GUI process was rejected for this
+  reason (owner, 2026-11-26: safety first).
+- cage then shows a second Wayland client on top of the GUI (as with
+  foot): still only programs we start, with fixed argv, as the user. The
+  GUI waits for it and comes back when it exits; Esc/q/Back leave it.
+- `resilience-maps` (terminal viewer) stays for the text editions and as
+  the fallback; the minimal edition does not get iced.
+- **Notes**: a built-in plain-text editor inside `resilience-gui` (notes are
+  the user's own files under the notes folder, already read by the GUI):
+  bounded size (the core text cap), UTF-8 only, saved through a temporary
+  file in the same folder + `rename`, Esc asks before discarding changes.
+  vim/nano stay as "Edit in a terminal".
+
 ## Alternatives not chosen
 
 - A full desktop (GNOME, XFCE, sway): too heavy, and against "minimalist and intuitive".
