@@ -1,5 +1,6 @@
 //! The map pack builder `resilience-mapmaker` (ADR 0016 §2), for build
-//! machines only: it is not installed in the system image.
+//! machines, and `make` (a map made on this computer, [`make`]) in the
+//! standard edition.
 //!
 //! ```text
 //! osmium tags-filter | osmium export -f geojsonseq
@@ -30,6 +31,7 @@ pub mod classify;
 pub mod finish;
 pub mod fold;
 pub mod geom;
+pub mod make;
 pub mod overview;
 pub mod poly;
 pub mod rows;

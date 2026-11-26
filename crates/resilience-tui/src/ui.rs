@@ -200,6 +200,9 @@ fn footer_hints(view: &View) -> &'static str {
         View::Recovery { .. } => "Number/Enter Open  Esc Back  F1 Help",
         View::Generations { .. } => "Enter Make default  r Refresh  Esc Back  F1 Help",
         View::Updates { .. } => "Enter Open/Install  c Check  r Refresh  Esc Back  F1 Help",
+        View::MakeMap { .. } => {
+            "Type a region  Up/Down Select  Enter Make this map  F5 Sticks  Esc"
+        }
         View::Licence { .. } => {
             "Tab Summary/Text  Up/Down Scroll  Space Tick  Enter Confirm  q Log out"
         }
@@ -430,6 +433,12 @@ fn draw_body(f: &mut Frame, app: &mut App, area: Rect) {
             purpose,
         } => draw_media(f, app, area, volumes, error.as_deref(), list, *purpose),
         View::PackSets { list } => draw_pack_sets(f, app, area, list),
+        View::MakeMap {
+            regions,
+            sticks,
+            query,
+            list,
+        } => draw_make_map(f, app, area, regions, sticks, query, list),
         View::Files {
             idx,
             query,
@@ -2255,6 +2264,61 @@ fn draw_backups(
         },
     };
     details(f, &t, d, lines);
+}
+
+fn draw_make_map(
+    f: &mut Frame,
+    app: &App,
+    area: Rect,
+    regions: &[resilience_core::mapmake::Region],
+    sticks: &[crate::app::MakeRow],
+    query: &str,
+    list: &mut ListState,
+) {
+    let t = Theme::new(app.theme);
+    let [intro, input, results] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Min(0),
+    ])
+    .areas(area);
+    f.render_widget(
+        Paragraph::new(
+            "Choose a region: Enter asks Geofabrik for its size (nothing is downloaded \
+             yet), then says what making the map needs and asks you. An extract on an \
+             open USB stick is listed first.",
+        )
+        .style(t.base)
+        .wrap(Wrap { trim: true }),
+        intro,
+    );
+    let cursor = if (app.tick / 2).is_multiple_of(2) {
+        "█"
+    } else {
+        " "
+    };
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(query.to_string(), t.accent),
+            Span::styled(cursor, t.base),
+        ]))
+        .block(block(
+            "MAKE OR UPDATE A MAP: type part of a region's name",
+            &t,
+        )),
+        input,
+    );
+    let rows = app.make_rows(regions, sticks, query);
+    let items: Vec<ListItem> = rows.iter().map(|r| ListItem::new(r.label())).collect();
+    draw_list(
+        f,
+        &t,
+        results,
+        &format!("REGIONS ({})", rows.len()),
+        items,
+        list,
+        "No region matches.",
+    );
 }
 
 fn draw_files(

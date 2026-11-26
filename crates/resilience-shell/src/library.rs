@@ -225,6 +225,8 @@ pub enum ItemPlace {
     Other,
     /// On a mounted stick, not checked. `known`: name and size are in the catalog.
     Stick { volume: String, known: bool },
+    /// Made on this computer, in ~/Maps (ROADMAP Phase 5b).
+    Made,
 }
 
 /// A file the library can open.
@@ -246,6 +248,7 @@ impl LibItem {
             ItemPlace::Builtin => "Built in".into(),
             ItemPlace::Stick { .. } => "USB stick".into(),
             ItemPlace::Other => "Other".into(),
+            ItemPlace::Made => "Made here".into(),
             ItemPlace::Installed => self.category.map_or("Other", |c| c.label()).into(),
         }
     }
@@ -440,6 +443,9 @@ impl App {
     /// Pack files of one kind, including those on mounted sticks.
     pub(super) fn all_library_items(&self, cfg: &PackConfig, kind: PackKind) -> Vec<LibItem> {
         let mut items = library_items(cfg, kind);
+        if kind == PackKind::Map {
+            items.extend(self.made_maps());
+        }
         let (volumes, _) = self.load_volumes();
         for v in volumes.iter().filter(|v| v.usable()) {
             if let Some(m) = &v.mountpoint {
@@ -610,9 +616,12 @@ impl App {
         let Some(cfg) = self.packs_config_or_explain() else {
             return Effect::None;
         };
-        let known = library_items(&cfg, PackKind::Map);
+        let mut known = library_items(&cfg, PackKind::Map);
+        known.extend(self.made_maps());
         let builtin = known.iter().filter(|i| i.place == ItemPlace::Builtin);
-        let installed = known.iter().filter(|i| i.place == ItemPlace::Installed);
+        let installed = known
+            .iter()
+            .filter(|i| matches!(i.place, ItemPlace::Installed | ItemPlace::Made));
         let mut files: Vec<PathBuf> = builtin.map(|i| i.path.clone()).collect();
         match item {
             Some(i) if i.place == ItemPlace::Builtin => {}

@@ -203,6 +203,7 @@
           }
         );
         vm-maps = vmTest ./tests/vm/maps.nix;
+        vm-mapmaker = vmTest ./tests/vm/mapmaker.nix;
         vm-comms = vmTest ./tests/vm/comms.nix;
         vm-mesh = vmTest ./tests/vm/mesh.nix;
         vm-share = vmTest ./tests/vm/share.nix;

@@ -22,6 +22,7 @@ pub mod keyboard;
 pub mod launch;
 pub mod licence;
 pub mod manpage;
+pub mod mapmake;
 pub mod maps;
 pub mod media;
 pub mod messages;

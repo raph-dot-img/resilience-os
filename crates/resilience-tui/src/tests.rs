@@ -15,9 +15,9 @@ use resilience_shell::input::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{
     App, BACKUP_LABEL, Builtin, CHECK_LABEL, CRYPTO_LABEL, Effect, EncryptTarget, Entry,
-    INSTALL_LABEL, InstallForm, InstallInput, InstallRow, ItemPlace, MediaPurpose, Modal,
-    PACKS_LABEL, PackRow, Paths, Pending, Pick, RESTORE_LABEL, Recipient, SearchHit, Startup,
-    UPDATE_APPLY_LABEL, UPDATE_CHECK_LABEL, View, stick_items,
+    INSTALL_LABEL, InstallForm, InstallInput, InstallRow, ItemPlace, MAKE_MAP_LABEL, MediaPurpose,
+    Modal, PACKS_LABEL, PackRow, Paths, Pending, Pick, RESTORE_LABEL, Recipient, SearchHit,
+    Startup, UPDATE_APPLY_LABEL, UPDATE_CHECK_LABEL, View, stick_items,
 };
 use crate::ui;
 
@@ -145,6 +145,7 @@ description = "Carol the admin"
         hotspot_state: sys.join("hotspot"),
         // Absent: not a live system (no installer).
         install_config: sys.join("install.toml"),
+        mapmaker_config: sys.join("mapmaker.toml"),
         efi: sys.join("efi"),
     }
 }
@@ -5071,4 +5072,93 @@ fn search_ranks_names_before_descriptions() {
         ),
         "{hits:?}"
     );
+}
+
+fn add_mapmaker(a: &App) {
+    let regions = a.home.join("sys/regions.json");
+    std::fs::write(
+        &regions,
+        r#"[
+  {"id":"europe","name":"Europe","pbf":"https://download.geofabrik.de/europe-latest.osm.pbf","poly":"https://download.geofabrik.de/europe.poly"},
+  {"id":"bretagne","name":"Bretagne","parent":"europe","pbf":"https://download.geofabrik.de/europe/france/bretagne-latest.osm.pbf","poly":"https://download.geofabrik.de/europe/france/bretagne.poly"}
+]"#,
+    )
+    .expect("regions");
+    std::fs::write(
+        &a.paths.mapmaker_config,
+        format!(
+            "program = \"/bin/mapmaker\"\nregions = \"{}\"\nexport_config = \"/e\"\n\
+             osmium = \"/o\"\ntippecanoe = \"/t\"\ncurl = \"/c\"\nmd5sum = \"/m\"\ntools = \"x\"\n",
+            regions.display()
+        ),
+    )
+    .expect("config");
+}
+
+#[test]
+fn make_a_map_lists_regions_runs_the_builder_and_lists_the_result() {
+    let mut a = app(Mode::UltraStable, "make-map");
+    assert!(!a.builtin_present(Builtin::MakeMap));
+    add_mapmaker(&a);
+    assert!(a.builtin_present(Builtin::MakeMap));
+    assert!(
+        a.entries(Category::Maps)
+            .contains(&Entry::Builtin(Builtin::MakeMap))
+    );
+    open(&mut a, Builtin::MakeMap);
+    let screen = render(&mut a, 80, 24);
+    assert!(screen.contains("Europe > Bretagne"), "{screen}");
+    // Typing filters; j and k are letters here, not moves.
+    for c in "bjk".chars() {
+        press(&mut a, KeyCode::Char(c));
+    }
+    assert!(render(&mut a, 80, 24).contains("No region matches"));
+    press(&mut a, KeyCode::Backspace);
+    press(&mut a, KeyCode::Backspace);
+    for c in "ret".chars() {
+        press(&mut a, KeyCode::Char(c));
+    }
+    let screen = render(&mut a, 80, 24);
+    assert!(screen.contains("REGIONS (1)"), "{screen}");
+    match press(&mut a, KeyCode::Enter) {
+        Effect::Run(r) => {
+            assert_eq!(r.argv, ["/bin/mapmaker", "make", "--region", "bretagne"]);
+            assert!(r.pause_after);
+            assert!(r.polkit_agent.is_none());
+        }
+        e => panic!("expected the builder, got {e:?}"),
+    }
+    assert!(matches!(a.view(), View::MakeMap { .. }));
+
+    // The builder made the map: it is marked, listed and opened.
+    let maps = a.home.join("Maps");
+    std::fs::create_dir_all(&maps).expect("mkdir");
+    std::fs::write(maps.join("map-osm-bretagne_2026-11.mbtiles"), b"x").expect("w");
+    std::fs::write(maps.join("notes.txt"), b"x").expect("w");
+    a.after_run(MAKE_MAP_LABEL, &Ok(std::process::ExitStatus::default()));
+    assert!(render(&mut a, 100, 24).contains("made here: data of 2026-11"));
+    press(&mut a, KeyCode::Esc);
+    add_world_map(&a);
+    open(&mut a, Builtin::MapFiles);
+    let View::Library { items, .. } = a.view() else {
+        panic!("not on the maps list")
+    };
+    let made: Vec<_> = items
+        .iter()
+        .filter(|i| i.place == ItemPlace::Made)
+        .collect();
+    assert_eq!(made.len(), 1);
+    assert_eq!(made[0].title, "Bretagne");
+    assert_eq!(made[0].tag(), "Made here");
+    a.stack.pop();
+    match a.activate(Entry::Builtin(Builtin::Map)) {
+        (_, Effect::Run(r)) => assert!(
+            r.argv
+                .iter()
+                .any(|x| x.ends_with("Maps/map-osm-bretagne_2026-11.mbtiles")),
+            "{:?}",
+            r.argv
+        ),
+        other => panic!("expected the map viewer, got {other:?}"),
+    }
 }
